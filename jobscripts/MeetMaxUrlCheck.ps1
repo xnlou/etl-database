@@ -1,3 +1,4 @@
+cls
 # Define the log directory and validate it
 $logDir = "C:\Users\xnlou\OneDrive\Documents\Logs"
 try {
@@ -44,10 +45,11 @@ $results = @()
 foreach ($i in $eventIds) {
     $counter++
     Write-Host "---"
-    # Construct the public and private base URLs
+    Write-Host ("Starting processing for EventID {0}" -f $i)
+    
+    # Construct the public and private URLs
     $publicUrl = "https://www.meetmax.com/sched/event_$i/__co-list_cp.html"
     $privateUrl = "https://www.meetmax.com/sched/event_$i/__private-co-list_cp.html"
-    $urlsToTry = @($publicUrl, $privateUrl)
     $urlUsed = ""
     $isPrivate = $false
     $isDownloadable = 0
@@ -55,61 +57,75 @@ foreach ($i in $eventIds) {
     $ifExists = 0
     $conferenceName = ""
     
-    Write-Host ("Starting processing for EventID {0}" -f $i)
-    
     try {
         # Create a session to maintain cookies
         $session = New-Object Microsoft.PowerShell.Commands.WebRequestSession
         Write-Host ("Created new WebRequestSession for EventID {0}" -f $i)
         
-        # Try each URL (public, then private)
-        foreach ($url in $urlsToTry) {
-            $urlUsed = $url
-            $isPrivate = ($url -eq $privateUrl)
-            Write-Host ("Trying {0} URL for EventID {1}: {2}" -f $(if ($isPrivate) { "private" } else { "public" }), $i, $url)
-            
-            try {
-                Write-Host ("Fetching page for EventID {0} from {1}" -f $i, $url)
-                $response = Invoke-WebRequest -Uri $url -Method Get -TimeoutSec 15 -MaximumRedirection 5 -WebSession $session -ErrorAction Stop -Headers @{ 
-                    "User-Agent" = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
-                    "Accept" = "application/vnd.ms-excel,application/octet-stream,text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8";
-                    "Accept-Encoding" = "gzip, deflate"
-                }
-                Write-Host ("Successfully fetched {0} page for EventID {1}, Status Code: {2}" -f $(if ($isPrivate) { "private" } else { "public" }), $i, $response.StatusCode)
-                
-                # Determine IfExists
-                $ifExists = if ($response.Content -like "*Invalid Event ID*") { 0 } else { 1 }
-                Write-Host ("IfExists for EventID {0} from {1} URL: {2}" -f $i, $(if ($isPrivate) { "private" } else { "public" }), $ifExists)
-                
-                # Check for downloadable link
-                Write-Host ("Checking for downloadable link in HTML for EventID {0}" -f $i)
-                if ($response.Content -imatch '<a[^>]*href="([^"]*[_\-_]co-list_cp\.xls[^"]*)"[^>]*>') {
-                    $isDownloadable = 1
-                    $href = $matches[1]
-                    Write-Host ("Found downloadable link for EventID {0}, href: {1}" -f $i, $href)
-                    if ($href -match '^https?://') {
-                        $downloadLink = $href
-                        Write-Host ("Using full URL for EventID {0}: {1}" -f $i, $downloadLink)
-                    }
-                    else {
-                        $baseUrl = "https://www.meetmax.com/sched/event_$i/"
-                        $downloadLink = $baseUrl + $href
-                        Write-Host ("Constructed download URL for EventID {0}: {1}" -f $i, $downloadLink)
-                    }
-                    break # Exit URL loop if link found
-                }
-                else {
-                    Write-Host ("No downloadable link found for EventID {0} from {1} URL" -f $i, $(if ($isPrivate) { "private" } else { "public" }))
-                    continue # Try next URL
-                }
-            }
-            catch {
-                Write-Host ("Failed to fetch {0} page for EventID {1}: {2}" -f $(if ($isPrivate) { "private" } else { "public" }), $i, $_.Exception.Message)
-                continue # Try next URL
-            }
+        # Check public page for private site indicator
+        Write-Host ("Checking public page for private site indicator: {0}" -f $publicUrl)
+        $publicResponse = Invoke-WebRequest -Uri $publicUrl -Method Get -TimeoutSec 15 -MaximumRedirection 5 -WebSession $session -ErrorAction Stop -Headers @{ 
+            "User-Agent" = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+            "Accept" = "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8";
+            "Accept-Encoding" = "gzip, deflate"
+        }
+        Write-Host ("Successfully fetched public page for EventID {0}, Status Code: {1}" -f $i, $publicResponse.StatusCode)
+        
+        # Look for private site link
+        if ($publicResponse.Content -imatch '<a[^>]*href="[^"]*__private-co-list_cp\.html[^"]*"[^>]*class="[^"]*nav-link[^"]*"[^>]*>Private Company List</a>') {
+            Write-Host ("Private site indicator found for EventID {0} in public page HTML" -f $i)
+            $isPrivate = $true
+        }
+        else {
+            Write-Host ("No private site indicator found for EventID {0} in public page HTML" -f $i)
         }
         
-        # Extract ConferenceName from <title> tag for valid events
+        # Select URL based on private site check
+        $urlUsed = if ($isPrivate) { $privateUrl } else { $publicUrl }
+        Write-Host ("Using {0} URL for EventID {1}: {2}" -f $(if ($isPrivate) { "private" } else { "public" }), $i, $urlUsed)
+        
+        # Fetch the selected page (private if indicated, else public)
+        Write-Host ("Fetching page for EventID {0} from {1}" -f $i, $urlUsed)
+        $response = $publicResponse
+        if ($isPrivate) {
+            $response = Invoke-WebRequest -Uri $privateUrl -Method Get -TimeoutSec 15 -MaximumRedirection 5 -WebSession $session -ErrorAction Stop -Headers @{ 
+                "User-Agent" = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+                "Accept" = "application/vnd.ms-excel,application/octet-stream,text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8";
+                "Accept-Encoding" = "gzip, deflate"
+            }
+            Write-Host ("Successfully fetched private page for EventID {0}, Status Code: {1}" -f $i, $response.StatusCode)
+        }
+        else {
+            Write-Host ("Using already fetched public page for EventID {0}" -f $i)
+        }
+        
+        # Determine IfExists
+        $ifExists = if ($response.Content -like "*Invalid Event ID*") { 0 } else { 1 }
+        Write-Host ("IfExists for EventID {0}: {1}" -f $i, $ifExists)
+        
+        # Check for downloadable link
+        Write-Host ("Checking for downloadable link in HTML for EventID {0}" -f $i)
+        if ($response.Content -imatch '<a[^>]*href="([^"]*[_\-_]co-list_cp\.xls[^"]*)"[^>]*>') {
+            $isDownloadable = 1
+            $href = $matches[1]
+            Write-Host ("Condition 1: Found downloadable link for EventID {0}, href: {1}" -f $i, $href)
+            if ($href -match '^https?://') {
+                Write-Host ("Subcondition 1a: href is a full URL for EventID {0}" -f $i)
+                $downloadLink = $href
+                Write-Host ("Using full URL for EventID {0}: {1}" -f $i, $downloadLink)
+            }
+            else {
+                Write-Host ("Subcondition 1b: href is relative for EventID {0}, appending to base URL" -f $i)
+                $baseUrl = "https://www.meetmax.com/sched/event_$i/"
+                $downloadLink = $baseUrl + $href
+                Write-Host ("Constructed download URL for EventID {0}: {1}" -f $i, $downloadLink)
+            }
+        }
+        else {
+            Write-Host ("Condition 2: No downloadable link found in HTML for EventID {0}" -f $i)
+        }
+        
+        # Extract ConferenceName
         if ($ifExists -eq 1) {
             Write-Host ("Extracting ConferenceName for EventID {0}" -f $i)
             if ($response.Content -match "<title>(.*?)</title>") {
@@ -130,7 +146,7 @@ foreach ($i in $eventIds) {
             IsDownloadable = $isDownloadable
             DownloadLink   = $downloadLink
         }
-        Write-Host ("Created result object for EventID {0}" -f $i)
+        Write-Host ("Created result object for EventID {0}: IfExists={1}, IsDownloadable={2}, DownloadLink={3}" -f $i, $ifExists, $isDownloadable, $downloadLink)
     }
     catch {
         $statusCode = if ($_.Exception.Response) { [int]$_.Exception.Response.StatusCode } else { "Unknown" }
@@ -147,16 +163,16 @@ foreach ($i in $eventIds) {
 
     # Add result to array
     $results += $result
-    Write-Host ("Processed EventID {0}: IfExists={1}, IsDownloadable={2}, DownloadLink={3}" -f $i, $result.IfExists, $result.IsDownloadable, $result.DownloadLink)
-
+    
     # Progress update every 10 seconds
     $currentTime = Get-Date
     if (($currentTime - $lastProgressUpdate).TotalSeconds -ge 10) {
         Write-Host ("Processed {0} out of {1} URLs" -f $counter, $total)
         $lastProgressUpdate = $currentTime
     }
-
+    
     # Add a 4-second delay to avoid rate-limiting
+    Write-Host ("Pausing for 4 seconds before next EventID" -f $i)
     Start-Sleep -Milliseconds 4000
 }
 
