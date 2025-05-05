@@ -36,7 +36,7 @@ setup_logging() {
             step_runtime REAL,
             total_runtime REAL,
             message TEXT,
-            user TEXT);" && echo "Log table created or already exists." || { echo "[ERROR] Failed to create log table"; exit 1; }
+            \"user\" TEXT);" && echo "Log table created or already exists." || { echo "[ERROR] Failed to create log table"; exit 1; }
     fi
 
     echo "Logging setup complete. UUID: $SESSION_UUID"
@@ -62,7 +62,7 @@ log_etl_event() {
 
     # Log to database if specified
     if [ "$log_to_db" = true ] && [ -n "$DB_CONN" ]; then
-        psql "$DB_CONN" -c "INSERT INTO logs (timestamp, counter, uuid, process_type, step_runtime, total_runtime, message, user) VALUES (
+        psql "$DB_CONN" -c "INSERT INTO logs (timestamp, counter, uuid, process_type, step_runtime, total_runtime, message, \"user\") VALUES (
             current_timestamp, 
             $LOG_COUNTER, 
             '$SESSION_UUID', 
