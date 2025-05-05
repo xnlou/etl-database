@@ -16,6 +16,13 @@ log_error() {
     echo "[ERROR] $(date): $1" >&2
 }
 
+# Update package lists and install PostgreSQL first to ensure psql is available
+echo "Updating package lists..."
+sudo apt update && echo "Package lists updated successfully." || { log_error "Apt update failed"; exit 1; }
+
+echo "Installing PostgreSQL and client tools..."
+sudo apt install -y postgresql postgresql-contrib && echo "PostgreSQL installed." || { log_error "Failed to install PostgreSQL"; exit 1; }
+
 # Check for critical commands
 for cmd in git psql systemctl sed; do
     if ! command -v "$cmd" >/dev/null 2>&1; then
@@ -24,13 +31,9 @@ for cmd in git psql systemctl sed; do
     fi
 done
 
-# Update package lists
-echo "Updating package lists..."
-sudo apt update && echo "Package lists updated successfully." || { log_error "Apt update failed"; exit 1; }
-
-# Install dependencies
-echo "Installing dependencies..."
-sudo apt install -y git acl postgresql postgresql-contrib cron python3.12 python3.12-venv python3.12-dev \
+# Install remaining dependencies
+echo "Installing remaining dependencies..."
+sudo apt install -y git acl cron python3.12 python3.12-venv python3.12-dev \
     libpq-dev build-essential && echo "Dependencies installed." || { log_error "Failed to install dependencies"; exit 1; }
 
 # Set Python 3.12 as default
@@ -57,7 +60,7 @@ sudo sed -i 's/local   all             all                                     p
 sudo systemctl restart postgresql && echo "PostgreSQL authentication configured." || log_error "Failed to configure PostgreSQL authentication"
 
 # Set PostgreSQL superuser password (only if not already set)
-if grep -q "local   all             postgres                                peer" "/etc/postgresql/$PG_VERSION/main/pg_hba.conf"; then
+if sudo grep -q "local   all             postgres                                peer" "/etc/postgresql/$PG_VERSION/main/pg_hba.conf"; then
     echo "Setting PostgreSQL superuser password..."
     PGPASSWORD="etlserver2025!"
     sudo -u postgres psql -c "ALTER USER postgres PASSWORD '$PGPASSWORD';" && echo "PostgreSQL password set." || { log_error "Failed to set PostgreSQL password"; exit 1; }
@@ -90,7 +93,7 @@ echo "Upgrading pip..."
 "$PROJECT_DIR/venv/bin/pip" install --upgrade pip && echo "Pip upgraded." || log_error "Failed to upgrade pip"
 echo "Installing Python dependencies..."
 "$PROJECT_DIR/venv/bin/pip" install requests==2.28.1 pandas==1.5.3 psycopg2-binary==2.9.5 matplotlib==3.7.1 \
-    scrapy==2.11.2 beautifulsoup4==4.12.3 openpyxl==3.1.2 smtplib && echo "Python dependencies installed." || { log_error "Failed to install Python dependencies"; exit 1; }
+    scrapy==2.11.2 beautifulsoup4==4.12.3 openpyxl==3.1.2 && echo "Python dependencies installed." || { log_error "Failed to install Python dependencies"; exit 1; }
 
 # Set permissions for virtual environment
 echo "Setting permissions for virtual environment..."
