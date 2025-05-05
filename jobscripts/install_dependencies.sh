@@ -16,25 +16,21 @@ log_error() {
     echo "[ERROR] $(date): $1" >&2
 }
 
-# Update package lists and install PostgreSQL first to ensure psql is available
+# Update package lists
 echo "Updating package lists..."
 sudo apt update && echo "Package lists updated successfully." || { log_error "Apt update failed"; exit 1; }
 
-echo "Installing PostgreSQL and client tools..."
-sudo apt install -y postgresql postgresql-contrib && echo "PostgreSQL installed." || { log_error "Failed to install PostgreSQL"; exit 1; }
-
-# Check for critical commands
-for cmd in git psql systemctl sed; do
-    if ! command -v "$cmd" >/dev/null 2>&1; then
-        log_error "$cmd is not installed. Please install it manually."
-        exit 1
-    fi
-done
-
-# Install remaining dependencies
-echo "Installing remaining dependencies..."
-sudo apt install -y git acl cron python3.12 python3.12-venv python3.12-dev \
+# Install dependencies, including PostgreSQL and client tools
+echo "Installing dependencies..."
+sudo apt install -y git acl postgresql postgresql-contrib cron python3.12 python3.12-venv python3.12-dev \
     libpq-dev build-essential && echo "Dependencies installed." || { log_error "Failed to install dependencies"; exit 1; }
+
+# Install DBeaver Community Edition
+echo "Installing DBeaver Community Edition..."
+wget -O - https://dbeaver.io/debs/dbeaver.gpg.key | sudo apt-key add - || { log_error "Failed to add DBeaver GPG key"; exit 1; }
+echo "deb https://dbeaver.io/debs/dbeaver-ce /" | sudo tee /etc/apt/sources.list.d/dbeaver.list
+sudo apt update && echo "DBeaver repository updated." || { log_error "Failed to update DBeaver repository"; exit 1; }
+sudo apt install -y dbeaver-ce && echo "DBeaver installed." || { log_error "Failed to install DBeaver"; exit 1; }
 
 # Set Python 3.12 as default
 echo "Setting Python 3.12 as default..."
@@ -59,16 +55,12 @@ sudo cp "/etc/postgresql/$PG_VERSION/main/pg_hba.conf" "/etc/postgresql/$PG_VERS
 sudo sed -i 's/local   all             all                                     peer/local   all             all                                     md5/' "/etc/postgresql/$PG_VERSION/main/pg_hba.conf"
 sudo systemctl restart postgresql && echo "PostgreSQL authentication configured." || log_error "Failed to configure PostgreSQL authentication"
 
-# Set PostgreSQL superuser password (only if not already set)
-if sudo grep -q "local   all             postgres                                peer" "/etc/postgresql/$PG_VERSION/main/pg_hba.conf"; then
-    echo "Setting PostgreSQL superuser password..."
-    PGPASSWORD="etlserver2025!"
-    sudo -u postgres psql -c "ALTER USER postgres PASSWORD '$PGPASSWORD';" && echo "PostgreSQL password set." || { log_error "Failed to set PostgreSQL password"; exit 1; }
-    unset PGPASSWORD
-else
-    echo "PostgreSQL password already configured (md5 authentication in use)."
-fi
-unset PGPASSWORD  # Clear the variable for security
+# Create PostgreSQL user 'yostfunds' and set password
+echo "Creating PostgreSQL user 'yostfunds'..."
+sudo -u postgres psql -c "CREATE ROLE yostfunds WITH LOGIN PASSWORD 'etlserver2025!';" || { log_error "Failed to create user yostfunds"; exit 1; }
+sudo -u postgres psql -c "ALTER ROLE yostfunds CREATEDB;" || { log_error "Failed to grant CREATEDB to yostfunds"; exit 1; }
+sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE postgres TO yostfunds;" || { log_error "Failed to grant privileges to yostfunds"; exit 1; }
+echo "PostgreSQL user 'yostfunds' created and configured."
 
 # Set up project directory
 PROJECT_DIR="$HOME_DIR/etl_workflow"

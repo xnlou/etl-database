@@ -14,7 +14,7 @@ PROCESS_TYPE="default"
 # Function to setup logging
 setup_logging() {
     local log_file_path="$1"
-    local db_params="$2"  # Format: "host=localhost port=5432 user=postgres password=etlserver2025! dbname=etl_db"
+    local db_params="$2"  # Format: "host=localhost port=5432 user=yostfunds password=etlserver2025! dbname=etl_db"
 
     # Ensure the directory exists
     echo "Creating log directory: $(dirname "$log_file_path")"
@@ -143,11 +143,15 @@ close_log() {
 
 # Example usage
 log_file_path="/home/$USER/etl_workflow/logs/etl.log"
-db_params="host=localhost port=5432 user=postgres password=etlserver2025! dbname=etl_db"
+db_params="host=localhost port=5432 user=yostfunds password=etlserver2025! dbname=etl_db"
 
 # Create ETL database if it doesn't exist
 echo "Creating database etl_db"
 sudo -u postgres psql -c "CREATE DATABASE etl_db;" || echo "Database etl_db already exists."
+
+# Grant privileges to yostfunds for etl_db
+echo "Granting privileges to yostfunds for etl_db"
+sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE etl_db TO yostfunds;" || { echo "[ERROR] Failed to grant privileges to yostfunds"; exit 1; }
 
 setup_logging "$log_file_path" "$db_params"
 log_etl_event "Logging system initialized" "SETUP" true
