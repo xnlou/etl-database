@@ -83,8 +83,10 @@ fi
 # Upgrade pip and install Python dependencies
 echo "Upgrading pip..."
 "$PROJECT_DIR/venv/bin/pip" install --upgrade pip && echo "Pip upgraded." || log_error "Failed to upgrade pip"
+echo "Installing build dependencies..."
+"$PROJECT_DIR/venv/bin/pip" install setuptools wheel && echo "Build dependencies installed." || { log_error "Failed to install build dependencies"; exit 1; }
 echo "Installing Python dependencies..."
-"$PROJECT_DIR/venv/bin/pip" install requests==2.28.1 pandas==1.5.3 psycopg2-binary==2.9.5 matplotlib==3.7.1 \
+"$PROJECT_DIR/venv/bin/pip" install numpy==1.26.4 pandas==1.5.3 requests==2.28.1 psycopg2-binary==2.9.5 matplotlib==3.7.1 \
     scrapy==2.11.2 beautifulsoup4==4.12.3 openpyxl==3.1.2 && echo "Python dependencies installed." || { log_error "Failed to install Python dependencies"; exit 1; }
 
 # Set permissions for virtual environment
