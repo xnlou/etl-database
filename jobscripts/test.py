@@ -4,7 +4,7 @@ from pathlib import Path
 import pandas as pd
 from datetime import datetime
 import time
-import csv  # Added for quoting constants
+import csv  # For quoting constants
 
 # Define constants
 EVENT_IDS = [100332, 100333, 100334]
@@ -119,6 +119,15 @@ def meetmax_url_check():
                 href = match.group(1)
                 print(f"Found downloadable link for EventID {event_id}, href: {href}")
                 log_message(f"Found downloadable link for EventID {event_id}, href: {href}", log_file)
+
+                # Truncate href after event_id parameter (split on semicolon)
+                if "?event_id=" in href:
+                    base_url, query = href.split("?event_id=", 1)
+                    event_id_part = query.split(";", 1)[0]
+                    href = f"{base_url}?event_id={event_id_part}"
+                    print(f"Truncated href after event_id for EventID {event_id}: {href}")
+                    log_message(f"Truncated href after event_id for EventID {event_id}: {href}", log_file)
+
                 if href.startswith('http'):
                     print(f"href is a full URL for EventID {event_id}")
                     log_message(f"href is a full URL for EventID {event_id}", log_file)
