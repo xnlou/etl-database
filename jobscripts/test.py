@@ -4,6 +4,7 @@ from pathlib import Path
 import pandas as pd
 from datetime import datetime
 import time
+import csv  # Added for quoting constants
 
 # Define constants
 EVENT_IDS = [100332, 100333, 100334]
@@ -171,14 +172,14 @@ def meetmax_url_check():
         log_message(f"Pausing for 4 seconds before next EventID", log_file)
         time.sleep(4)
 
-    # Export results to CSV
+    # Export results to CSV with proper quoting
     try:
         timestamp = datetime.now().strftime("%Y%m%dT%H%M%S")
         csv_file = OUTPUT_DIR / f"{timestamp}_MeetMaxURLCheck.csv"
         print(f"Exporting results to CSV: {csv_file}")
         log_message(f"Exporting results to CSV: {csv_file}", log_file)
         df = pd.DataFrame(results)
-        df.to_csv(csv_file, index=False)
+        df.to_csv(csv_file, index=False, quoting=csv.QUOTE_NONNUMERIC, quotechar='"')
         print(f"Successfully wrote results to CSV file: {csv_file}")
         log_message(f"Successfully wrote results to CSV file: {csv_file}", log_file)
     except Exception as e:
