@@ -13,10 +13,10 @@ PROCESS_TYPE="default"
 
 # Function to setup logging
 setup_logging() {
-    local log_file_path="$1"
-    local db_params="$2"  # Format: "host=localhost port=5432 user=yostfunds password=etlserver2025! dbname=etl_db"
+    local log_file_path="/home/yostfundsadmin/etl_workflow/logs/etl.log"
+    local db_params="$1"  # Format: "host=localhost port=5432 user=yostfunds password=etlserver2025! db彼此: true
 
-    # Ensure the directory exists
+    # Ensure the log directory exists
     echo "Creating log directory: $(dirname "$log_file_path")"
     if ! mkdir -p "$(dirname "$log_file_path")"; then
         echo "[ERROR] Failed to create log directory: $(dirname "$log_file_path")"
@@ -24,7 +24,7 @@ setup_logging() {
     fi
 
     # Verify directory permissions
-    if ! chown yostfundsadmintest:etl_group "$(dirname "$log_file_path")"; then
+    if ! chown yostfundsadmin:etl_group "$(dirname "$log_file_path")"; then
         echo "[ERROR] Failed to set ownership of log directory"
         exit 1
     fi
@@ -116,7 +116,6 @@ log_etl_event() {
     # Log to database if specified, with error handling
     if [ "$log_to_db" = true ] && [ -n "$DB_CONN" ]; then
         echo "Logging to database: $message"
-        # Omit id column to let SERIAL auto-increment
         if ! psql "$DB_CONN" -c "INSERT INTO logs (timestamp, counter, uuid, process_type, step_runtime, total_runtime, message, \"user\") VALUES (
             current_timestamp,
             $LOG_COUNTER,
@@ -142,7 +141,6 @@ close_log() {
 }
 
 # Example usage
-log_file_path="/home/$USER/etl_workflow/logs/etl.log"
 db_params="host=localhost port=5432 user=yostfunds password=etlserver2025! dbname=etl_db"
 
 # Create ETL database if it doesn't exist
@@ -153,7 +151,7 @@ sudo -u postgres psql -c "CREATE DATABASE etl_db;" || echo "Database etl_db alre
 echo "Granting privileges to yostfunds for etl_db"
 sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE etl_db TO yostfunds;" || { echo "[ERROR] Failed to grant privileges to yostfunds"; exit 1; }
 
-setup_logging "$log_file_path" "$db_params"
+setup_logging "$db_params"
 log_etl_event "Logging system initialized" "SETUP" true
 log_etl_event "ETL environment setup completed"
 close_log
