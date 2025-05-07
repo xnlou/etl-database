@@ -2,3 +2,4 @@ venv/
 archive/
 logs/
 file_watcher/
+*.pyc
