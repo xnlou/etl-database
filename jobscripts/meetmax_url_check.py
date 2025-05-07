@@ -14,7 +14,6 @@ import csv
 from systemscripts.directory_management import LOG_DIR, FILE_WATCHER_DIR, ensure_directory_exists
 
 # Define constants
-EVENT_IDS = [92567, 100333, 119981,119183,100332]
 BASE_URL = "https://www.meetmax.com/sched/event_{}/"
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
@@ -34,7 +33,9 @@ def meetmax_url_check():
     Outputs results to a CSV file and logs progress/errors to a timestamped log file.
     """
     results = []
-    total = len(EVENT_IDS)
+    # Define the range of event IDs to check
+    event_ids = range(119183, 119190)  # Adjust range as needed
+    total = len(event_ids)
     counter = 0
     last_progress_update = time.time()
 
@@ -54,7 +55,7 @@ def meetmax_url_check():
         "Accept-Encoding": "gzip, deflate"
     })
 
-    for event_id in EVENT_IDS:
+    for event_id in event_ids:
         counter += 1
         print(f"---\nStarting processing for EventID {event_id}")
         log_message(f"---", log_file)
