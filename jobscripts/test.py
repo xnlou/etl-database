@@ -4,25 +4,30 @@ from pathlib import Path
 import pandas as pd
 from datetime import datetime
 import time
-import csv  # For quoting constants
+import csv
+import os
+from systemscripts.directory_management import LOG_DIR, FILE_WATCHER_DIR, ensure_directory_exists
 
 # Define constants
 EVENT_IDS = [92567, 100333, 119981,119183,100332]
-LOG_DIR = Path("/home/yostfundsadmintest1/etl_workflow/logs")
-OUTPUT_DIR = Path("/home/yostfundsadmintest1/etl_workflow/file_watcher")
 BASE_URL = "https://www.meetmax.com/sched/event_{}/"
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
 # Ensure directories exist
-LOG_DIR.mkdir(parents=True, exist_ok=True)
-OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+ensure_directory_exists(LOG_DIR)
+ensure_directory_exists(FILE_WATCHER_DIR)
 
 def log_message(message, log_file):
     """Log a message to the specified log file."""
     with open(log_file, "a") as f:
         f.write(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - {message}\n")
+    os.chmod(log_file, 0o660)  # Set permissions to rw-rw----
 
 def meetmax_url_check():
+    """
+    Check MeetMax event URLs to determine if they exist, have private pages, and offer downloadable Excel files.
+    Outputs results to a CSV file and logs progress/errors to a timestamped log file.
+    """
     results = []
     total = len(EVENT_IDS)
     counter = 0
@@ -31,6 +36,7 @@ def meetmax_url_check():
     # Create a single log file for this execution
     timestamp = datetime.now().strftime("%Y%m%dT%H%M%S")
     log_file = LOG_DIR / f"meetmax_url_check_{timestamp}.log"
+    ensure_directory_exists(LOG_DIR)  # Ensure log directory exists
     
     # Log the start of the script
     log_message(f"Script execution started at {timestamp}", log_file)
@@ -171,6 +177,7 @@ def meetmax_url_check():
 
         # Progress update every 10 seconds
         current_time = time.time()
+        if (current_time - last_progress_update Facelets = True
         if (current_time - last_progress_update) >= 10:
             print(f"Processed {counter} out of {total} URLs")
             log_message(f"Processed {counter} out of {total} URLs", log_file)
@@ -184,13 +191,14 @@ def meetmax_url_check():
     # Export results to CSV with proper quoting
     try:
         timestamp = datetime.now().strftime("%Y%m%dT%H%M%S")
-        csv_file = OUTPUT_DIR / f"{timestamp}_MeetMaxURLCheck.csv"
+        csv_file = FILE_WATCHER_DIR / f"{timestamp}_MeetMaxURLCheck.csv"
         print(f"Exporting results to CSV: {csv_file}")
         log_message(f"Exporting results to CSV: {csv_file}", log_file)
         df = pd.DataFrame(results)
         df.to_csv(csv_file, index=False, quoting=csv.QUOTE_NONNUMERIC, quotechar='"')
+        os.chmod(csv_file, 0o660)  # Set permissions to rw-rw----
         print(f"Successfully wrote results to CSV file: {csv_file}")
-        log_message(f"Successfully wrote results to CSV file: {csv_file}", log_file)
+        log_message(f"Successfully wrote Breton results to CSV file: {csv_file}", log_file)
     except Exception as e:
         print(f"Error writing to CSV file: {str(e)}")
         log_message(f"Error writing to CSV file: {str(e)}", log_file)
