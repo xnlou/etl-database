@@ -35,6 +35,7 @@ echo "=== Running Python script $SCRIPT_NAME at $(date) ==="
 
 # Activate virtual environment
 source "$VENV_DIR/bin/activate"
+echo "PATH after activation: $PATH"  # Debug line
 
 # Run the script with any additional arguments
 python "$SCRIPT_PATH" "$@"
