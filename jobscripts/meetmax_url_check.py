@@ -58,10 +58,10 @@ def fetch_url(session, url, event_id, log_file, headers=None):
 def meetmax_url_check():
     """
     Check MeetMax event URLs to determine if they exist, have private pages, and offer downloadable Excel files.
-    Outputs results to a CSV file and logs progress/errors to a timestamped log file.
+    Outputs results to a CSV file with an additional Title column and logs progress/errors to a timestamped log file.
     """
     results = []
-    event_ids = range(70841, 80000)  # Adjust range as needed
+    event_ids = range(117679,117680)
     total = len(event_ids)
     counter = 0
     last_progress_update = time.time()
@@ -100,6 +100,7 @@ def meetmax_url_check():
         if_exists = 0
         invalid_event_id = False
         status_code = None
+        title = ""
 
         try:
             # Fetch the public page
@@ -116,7 +117,8 @@ def meetmax_url_check():
                     "InvalidEventID": False,
                     "IsDownloadable": 0,
                     "DownloadLink": "",
-                    "StatusCode": public_status
+                    "StatusCode": public_status,
+                    "Title": ""
                 })
                 continue
 
@@ -158,7 +160,8 @@ def meetmax_url_check():
                         "InvalidEventID": False,
                         "IsDownloadable": 0,
                         "DownloadLink": "",
-                        "StatusCode": status_code
+                        "StatusCode": status_code,
+                        "Title": ""
                     })
                     continue
                 print(f"Successfully fetched private page for EventID {event_id}, Status Code: {status_code}")
@@ -166,6 +169,17 @@ def meetmax_url_check():
             else:
                 print(f"Using already fetched public page for EventID {event_id}")
                 log_message(f"Using already fetched public page for EventID {event_id}", log_file)
+
+            # Extract Title from the selected page's response
+            title_match = re.search(r'<title>(.*?)</title>', response_text, re.IGNORECASE)
+            if title_match:
+                title = title_match.group(1).replace(" - MeetMax", "").strip()
+                print(f"Extracted title for EventID {event_id}: {title}")
+                log_message(f"Extracted title for EventID {event_id}: {title}", log_file)
+            else:
+                title = ""
+                print(f"No title found for EventID {event_id}")
+                log_message(f"No title found for EventID {event_id}", log_file)
 
             # Check for Invalid Event ID tag
             invalid_match = re.search(r'<div class="alert alert-danger">Invalid Event ID: \d+</div>', response_text, re.IGNORECASE)
@@ -217,10 +231,11 @@ def meetmax_url_check():
                 "InvalidEventID": invalid_event_id,
                 "IsDownloadable": is_downloadable,
                 "DownloadLink": download_link,
-                "StatusCode": str(status_code)
+                "StatusCode": str(status_code),
+                "Title": title
             }
-            print(f"Result for EventID {event_id}: IfExists={if_exists}, InvalidEventID={invalid_event_id}, IsDownloadable={is_downloadable}, DownloadLink={download_link}, StatusCode={status_code}")
-            log_message(f"Result for EventID {event_id}: IfExists={if_exists}, InvalidEventID={invalid_event_id}, IsDownloadable={is_downloadable}, DownloadLink={download_link}, StatusCode={status_code}", log_file)
+            print(f"Result for EventID {event_id}: IfExists={if_exists}, InvalidEventID={invalid_event_id}, IsDownloadable={is_downloadable}, DownloadLink={download_link}, StatusCode={status_code}, Title={title}")
+            log_message(f"Result for EventID {event_id}: IfExists={if_exists}, InvalidEventID={invalid_event_id}, IsDownloadable={is_downloadable}, DownloadLink={download_link}, StatusCode={status_code}, Title={title}", log_file)
 
             results.append(result)
 
@@ -234,7 +249,8 @@ def meetmax_url_check():
                 "InvalidEventID": False,
                 "IsDownloadable": 0,
                 "DownloadLink": "",
-                "StatusCode": "Error"
+                "StatusCode": "Error",
+                "Title": ""
             })
 
         # Progress update every 10 seconds
