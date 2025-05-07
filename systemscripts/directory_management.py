@@ -1,25 +1,25 @@
 import os
-
+from pathlib import Path
 
 # Directory Management Module
 
 # Root directory for all ETL workflows
-ROOT_DIR = '/home/yostfundsadmintest1/etl_workflow'
+ROOT_DIR = Path('/home/yostfundsadmintest1/client_etl_workflow')
 
 # Directory for file watcher
-FILE_WATCHER_DIR = os.path.join(ROOT_DIR, 'file_watcher')
+FILE_WATCHER_DIR = ROOT_DIR / 'file_watcher'
 
 # Directory for log files
-LOG_DIR = os.path.join(ROOT_DIR, 'logs')
+LOG_DIR = ROOT_DIR / 'logs'
 
 # Directory for archived files
-ARCHIVE_DIR = os.path.join(ROOT_DIR, 'archive')
+ARCHIVE_DIR = ROOT_DIR / 'archive'
 
 # Directory for job scripts
-JOB_SCRIPTS_DIR = os.path.join(ROOT_DIR, 'jobscripts')
+JOB_SCRIPTS_DIR = ROOT_DIR / 'jobscripts'
 
 # Directory for system scripts
-SYSTEM_SCRIPTS_DIR = os.path.join(ROOT_DIR, 'systemscripts')
+SYSTEM_SCRIPTS_DIR = ROOT_DIR / 'systemscripts'
 
 def ensure_directory_exists(directory):
     """
