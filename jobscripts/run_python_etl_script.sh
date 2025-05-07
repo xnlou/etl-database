@@ -32,13 +32,16 @@ fi
 # Redirect output to log file
 exec > >(tee -a "$LOG_FILE") 2>&1
 echo "=== Running Python script $SCRIPT_NAME at $(date) ==="
+echo "User: $(whoami)"
+echo "Groups: $(groups)"
+echo "Permissions of $SCRIPT_PATH: $(ls -l $SCRIPT_PATH)"
+echo "Permissions of $VENV_DIR/bin/python: $(ls -l $VENV_DIR/bin/python)"
 
 # Activate virtual environment
 source "$VENV_DIR/bin/activate"
-echo "PATH after activation: $PATH"  # Debug line
 
-# Run the script with any additional arguments
-python "$SCRIPT_PATH" "$@"
+# Run the script with any additional arguments using full path to python
+"$VENV_DIR/bin/python" "$SCRIPT_PATH" "$@"
 
 # Deactivate virtual environment
 deactivate
