@@ -7,7 +7,7 @@ import time
 import csv  # For quoting constants
 
 # Define constants
-EVENT_IDS = [100332, 100333, 100334]
+EVENT_IDS = [92567, 100333, 119981,119183,100332]
 LOG_DIR = Path("/home/yostfundsadmintest1/etl_workflow/logs")
 OUTPUT_DIR = Path("/home/yostfundsadmintest1/etl_workflow/file_watcher")
 BASE_URL = "https://www.meetmax.com/sched/event_{}/"
