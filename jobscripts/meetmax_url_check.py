@@ -17,8 +17,8 @@ from systemscripts.directory_management import LOG_DIR, FILE_WATCHER_DIR, ensure
 # Define constants
 BASE_URL = "https://www.meetmax.com/sched/event_{}/"
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-MAX_RETRIES = 3  # Max retries for failed requests
-INITIAL_DELAY = 4.0  # Delay between requests (seconds)
+MAX_RETRIES = 5  # Increased retries for failed requests
+INITIAL_DELAY = 5.0  # Base delay for retries (seconds, with exponential backoff)
 TASK_SUBMISSION_DELAY = 0.5  # Delay between task submissions (seconds)
 
 # Ensure directories exist
@@ -32,7 +32,7 @@ def log_message(message, log_file):
     os.chmod(log_file, 0o660)  # Set permissions to rw-rw----
 
 def fetch_url(session, url, event_id, log_file, headers=None):
-    """Fetch a URL with retry logic, returning response text and status code."""
+    """Fetch a URL with retry logic and exponential backoff, returning response text and status code."""
     for attempt in range(MAX_RETRIES):
         try:
             response = session.get(url, timeout=15, headers=headers)
@@ -51,7 +51,9 @@ def fetch_url(session, url, event_id, log_file, headers=None):
             status_code = e.response.status_code if e.response else "Unknown"
             log_message(f"Error fetching {url} for EventID {event_id} (Attempt {attempt + 1}/{MAX_RETRIES}): Status {status_code} - {str(e)}", log_file)
             if attempt < MAX_RETRIES - 1:
-                time.sleep(INITIAL_DELAY)
+                delay = INITIAL_DELAY * (2 ** attempt)  # Exponential backoff: 4s, 8s, 16s, 32s, 64s
+                log_message(f"Retrying after {delay}s", log_file)
+                time.sleep(delay)
             else:
                 log_message(f"Failed to fetch {url} for EventID {event_id} after {MAX_RETRIES} attempts", log_file)
                 return None, "Failed"
@@ -175,16 +177,26 @@ def process_event(event_id, log_file):
             print(f"No Invalid Event ID tag found for EventID {event_id}, event exists")
             log_message(f"No Invalid Event ID tag found for EventID {event_id}, event exists", log_file)
 
-        # Check for downloadable link
-        print(f"Checking for downloadable link for EventID {event_id}")
-        log_message(f"Checking for downloadable link for EventID {event_id}", log_file)
-        match = re.search(r'<a[^>]*href="([^"]*[_\-_]co-list_cp\.xls[^"]*)"[^>]*>', response_text, re.IGNORECASE)
-        log_message(f"Download link match for EventID {event_id}: {bool(match)}", log_file)
-        if match:
+        # Check for downloadable link or export button
+        print(f"Checking for downloadable link or export button for EventID {event_id}")
+        log_message(f"Checking for downloadable link or export button for EventID {event_id}", log_file)
+        # Existing pattern for direct link
+        link_match = re.search(r'<a[^>]*href="([^"]*[_\-_]co-list_cp\.xls[^"]*)"[^>]*>', response_text, re.IGNORECASE)
+        # New pattern for export button
+        button_match = re.search(r'<[^>]*id="export"[^>]*>.*?<i class="fas fa-cloud-download-alt"> </i>\s*Download Company List', response_text, re.IGNORECASE | re.DOTALL)
+        log_message(f"Download link match for EventID {event_id}: {bool(link_match)}", log_file)
+        log_message(f"Export button match for EventID {event_id}: {bool(button_match)}", log_file)
+        
+        if link_match or button_match:
             is_downloadable = 1
-            href = match.group(1)
-            print(f"Found downloadable link for EventID {event_id}, href: {href}")
-            log_message(f"Found downloadable link for EventID {event_id}, href: {href}", log_file)
+            if link_match:
+                href = link_match.group(1)
+                print(f"Found downloadable link for EventID {event_id}, href: {href}")
+                log_message(f"Found downloadable link for EventID {event_id}, href: {href}", log_file)
+            else:
+                href = f"__co-list_cp.xls?event_id={event_id}"
+                print(f"Found export button for EventID {event_id}, generating href: {href}")
+                log_message(f"Found export button for EventID {event_id}, generating href: {href}", log_file)
 
             # Truncate href after event_id parameter (split on semicolon)
             if "?event_id=" in href:
@@ -201,8 +213,8 @@ def process_event(event_id, log_file):
             print(f"Download URL for EventID {event_id}: {download_link}")
             log_message(f"Download URL for EventID {event_id}: {download_link}", log_file)
         else:
-            print(f"No downloadable link found for EventID {event_id}")
-            log_message(f"No downloadable link found for EventID {event_id}", log_file)
+            print(f"No downloadable link or export button found for EventID {event_id}")
+            log_message(f"No downloadable link or export button found for EventID {event_id}", log_file)
 
         # Create result object
         result = {
@@ -240,7 +252,7 @@ def meetmax_url_check():
     Outputs results to a CSV file with an additional Title column and logs progress/errors to a timestamped log file.
     """
     results = []
-    event_ids = range(119159, 119184)  # Includes 117679 and 117680
+    event_ids = range(113749, 113751)  # Covers all IDs from CSV
     total = len(event_ids)
     counter = 0
     last_progress_update = time.time()
