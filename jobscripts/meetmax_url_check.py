@@ -61,7 +61,7 @@ def meetmax_url_check():
     Outputs results to a CSV file and logs progress/errors to a timestamped log file.
     """
     results = []
-    event_ids = range(119183, 119190)  # Adjust range as needed
+    event_ids = range(70841, 120000)  # Adjust range as needed
     total = len(event_ids)
     counter = 0
     last_progress_update = time.time()
