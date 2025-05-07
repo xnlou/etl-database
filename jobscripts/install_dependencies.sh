@@ -5,8 +5,8 @@ set -e  # Exit immediately if a command exits with a non-zero status
 # Detect the user running the script
 CURRENT_USER=$(whoami)
 HOME_DIR="/home/$CURRENT_USER"
-PROJECT_DIR="$HOME_DIR/etl_workflow"
-LOG_FILE="$HOME_DIR/install_dependencies.log"
+PROJECT_DIR="$HOME_DIR/client_etl_workflow"
+LOG_FILE="$PROJECT_DIR/logs/install_dependencies.log"
 
 # Redirect stdout and stderr to log file
 exec > >(tee -a "$LOG_FILE") 2>&1
@@ -72,9 +72,9 @@ sudo chmod -R 2770 "$PROJECT_DIR" && echo "Project directory created and permiss
 
 # Create subdirectories
 echo "Creating necessary subdirectories..."
-mkdir -p "$PROJECT_DIR/file_watcher" "$PROJECT_DIR/logs" "$PROJECT_DIR/archive" "$PROJECT_DIR/scripts" && echo "Subdirectories created." || log_error "Failed to create subdirectories"
-sudo chown -R "$CURRENT_USER":etl_group "$PROJECT_DIR/file_watcher" "$PROJECT_DIR/logs" "$PROJECT_DIR/archive" "$PROJECT_DIR/scripts"
-sudo chmod -R 2770 "$PROJECT_DIR/file_watcher" "$PROJECT_DIR/logs" "$PROJECT_DIR/archive" "$PROJECT_DIR/scripts" && echo "Subdirectory permissions set." || log_error "Failed to set subdirectory permissions"
+mkdir -p "$PROJECT_DIR/file_watcher" "$PROJECT_DIR/logs" "$PROJECT_DIR/archive" "$PROJECT_DIR/jobscripts" "$PROJECT_DIR/systemscripts" && echo "Subdirectories created." || log_error "Failed to create subdirectories"
+sudo chown -R "$CURRENT_USER":etl_group "$PROJECT_DIR/file_watcher" "$PROJECT_DIR/logs" "$PROJECT_DIR/archive" "$PROJECT_DIR/jobscripts" "$PROJECT_DIR/systemscripts"
+sudo chmod -R 2770 "$PROJECT_DIR/file_watcher" "$PROJECT_DIR/logs" "$PROJECT_DIR/archive" "$PROJECT_DIR/jobscripts" "$PROJECT_DIR/systemscripts" && echo "Subdirectory permissions set." || log_error "Failed to set subdirectory permissions"
 
 # Set up Python virtual environment
 echo "Setting up Python virtual environment..."

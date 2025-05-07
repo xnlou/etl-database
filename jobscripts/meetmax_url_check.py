@@ -177,7 +177,6 @@ def meetmax_url_check():
 
         # Progress update every 10 seconds
         current_time = time.time()
-        if (current_time - last_progress_update Facelets = True
         if (current_time - last_progress_update) >= 10:
             print(f"Processed {counter} out of {total} URLs")
             log_message(f"Processed {counter} out of {total} URLs", log_file)
@@ -198,7 +197,7 @@ def meetmax_url_check():
         df.to_csv(csv_file, index=False, quoting=csv.QUOTE_NONNUMERIC, quotechar='"')
         os.chmod(csv_file, 0o660)  # Set permissions to rw-rw----
         print(f"Successfully wrote results to CSV file: {csv_file}")
-        log_message(f"Successfully wrote Breton results to CSV file: {csv_file}", log_file)
+        log_message(f"Successfully wrote results to CSV file: {csv_file}", log_file)
     except Exception as e:
         print(f"Error writing to CSV file: {str(e)}")
         log_message(f"Error writing to CSV file: {str(e)}", log_file)

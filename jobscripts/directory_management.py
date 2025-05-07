@@ -3,7 +3,7 @@ import os
 # Directory Management Module
 
 # Root directory for all ETL workflows
-ROOT_DIR = '/home/yostfundsadmin/etl_workflow'
+ROOT_DIR = '/home/yostfundsadmintest1/client_etl_workflow'
 
 # Directory for file watcher
 FILE_WATCHER_DIR = os.path.join(ROOT_DIR, 'file_watcher')
@@ -14,8 +14,11 @@ LOG_DIR = os.path.join(ROOT_DIR, 'logs')
 # Directory for archived files
 ARCHIVE_DIR = os.path.join(ROOT_DIR, 'archive')
 
-# Directory for scripts
-SCRIPTS_DIR = os.path.join(ROOT_DIR, 'scripts')
+# Directory for job scripts
+JOB_SCRIPTS_DIR = os.path.join(ROOT_DIR, 'jobscripts')
+
+# Directory for system scripts
+SYSTEM_SCRIPTS_DIR = os.path.join(ROOT_DIR, 'systemscripts')
 
 def ensure_directory_exists(directory):
     """
@@ -23,11 +26,7 @@ def ensure_directory_exists(directory):
     """
     if not os.path.exists(directory):
         os.makedirs(directory)
-        # Set ownership and permissions (assumes etl_group exists)
-        os.system(f"chown yostfundsadmin:etl_group {directory}")
-        os.system(f"chmod 2770 {directory}")
-        os.system(f"setfacl -m g:etl_group:rwx {directory}")
-        os.system(f"setfacl -d -m g:etl_group:rwx {directory}")
+        os.chmod(directory, 0o770)  # Set permissions to rwxrwx---
 
 def initialize_directories():
     """
@@ -37,7 +36,8 @@ def initialize_directories():
     ensure_directory_exists(FILE_WATCHER_DIR)
     ensure_directory_exists(LOG_DIR)
     ensure_directory_exists(ARCHIVE_DIR)
-    ensure_directory_exists(SCRIPTS_DIR)
+    ensure_directory_exists(JOB_SCRIPTS_DIR)
+    ensure_directory_exists(SYSTEM_SCRIPTS_DIR)
 
 # Example usage
 if __name__ == "__main__":
@@ -46,4 +46,5 @@ if __name__ == "__main__":
     print(f"File Watcher Directory: {FILE_WATCHER_DIR}")
     print(f"Log Directory: {LOG_DIR}")
     print(f"Archive Directory: {ARCHIVE_DIR}")
-    print(f"Scripts Directory: {SCRIPTS_DIR}")
+    print(f"Job Scripts Directory: {JOB_SCRIPTS_DIR}")
+    print(f"System Scripts Directory: {SYSTEM_SCRIPTS_DIR}")
