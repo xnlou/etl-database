@@ -1,3 +1,9 @@
+import sys
+import os
+
+# Add the parent directory to sys.path
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 import requests
 import re
 from pathlib import Path
@@ -5,7 +11,6 @@ import pandas as pd
 from datetime import datetime
 import time
 import csv
-import os
 from systemscripts.directory_management import LOG_DIR, FILE_WATCHER_DIR, ensure_directory_exists
 
 # Define constants
