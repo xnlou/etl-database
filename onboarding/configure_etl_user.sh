@@ -21,6 +21,22 @@ log_system_check() {
     echo "[CHECK] $(date): $check_name: $check_result"
 }
 
+# Create etl_group if it doesn't exist
+echo "Creating etl_group if it doesn't exist..."
+if ! getent group etl_group > /dev/null 2>&1; then
+    sudo groupadd etl_group && echo "etl_group created." || log_error "Failed to create etl_group"
+fi
+
+# Create etl_user with dedicated home directory if it doesn't exist
+echo "Creating etl_user if it doesn't exist..."
+if ! id -u etl_user > /dev/null 2>&1; then
+    sudo useradd -m -d "/home/etl_user" -s /bin/bash -G etl_group etl_user && echo "etl_user created." || log_error "Failed to create etl_user"
+fi
+
+# Add current user to etl_group
+echo "Adding $CURRENT_USER to etl_group..."
+sudo usermod -aG etl_group "$CURRENT_USER" && echo "$CURRENT_USER added to etl_group." || log_error "Failed to add $CURRENT_USER to etl_group"
+
 # Set up project directory
 echo "Creating project directory: $PROJECT_DIR..."
 mkdir -p "$PROJECT_DIR"
@@ -45,22 +61,6 @@ sudo chmod 660 "$LOG_FILE" && echo "Log file permissions set." || log_error "Fai
 log_system_check "Checking if etl_group exists" "$(getent group etl_group || echo 'Not found')"
 log_system_check "Checking network connectivity" "$(ping -c 1 8.8.8.8 > /dev/null 2>&1 && echo 'Success' || echo 'Failed')"
 log_system_check "Checking disk space on /home" "$(df -h /home | tail -1)"
-
-# Create etl_group if it doesn't exist
-echo "Creating etl_group if it doesn't exist..."
-if ! getent group etl_group > /dev/null 2>&1; then
-    sudo groupadd etl_group && echo "etl_group created." || log_error "Failed to create etl_group"
-fi
-
-# Create etl_user with dedicated home directory if it doesn't exist
-echo "Creating etl_user if it doesn't exist..."
-if ! id -u etl_user > /dev/null 2>&1; then
-    sudo useradd -m -d "/home/etl_user" -s /bin/bash -G etl_group etl_user && echo "etl_user created." || log_error "Failed to create etl_user"
-fi
-
-# Add current user to etl_group
-echo "Adding $CURRENT_USER to etl_group..."
-sudo usermod -aG etl_group "$CURRENT_USER" && echo "$CURRENT_USER added to etl_group." || log_error "Failed to add $CURRENT_USER to etl_group"
 
 # Configure sudoers for etl_user (limit to necessary commands)
 echo "Allowing etl_user to run specific commands without password..."
