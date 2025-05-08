@@ -1,5 +1,5 @@
 #!/bin/bash
-# Description: Personal onboarding script to download a Git repository as ZIP and install software.
+# Description: Personal onboarding script to install software.
 set -e  # Exit immediately if a command exits with a non-zero status
 
 # Detect the user running the script
@@ -19,20 +19,9 @@ log_error() {
 exec > >(tee -a "$LOG_FILE") 2>&1
 echo "=== Onboarding started at $(date) by $CURRENT_USER ==="
 
-# Install unzip for extracting the ZIP file
-echo "Installing unzip..."
+# Update package lists
+echo "Updating package lists..."
 sudo apt update || log_error "Failed to update package lists"
-sudo apt install -y unzip || log_error "Failed to install unzip"
-
-# Download the repository as a ZIP file
-echo "Downloading repository as ZIP from https://github.com/xnlou/client_etl_workflow.git..."
-wget -O "$HOME_DIR/client_etl_workflow.zip" "https://github.com/xnlou/client_etl_workflow/archive/refs/heads/main.zip" || log_error "Failed to download repository ZIP"
-
-# Extract the ZIP file
-echo "Extracting repository ZIP..."
-unzip -o "$HOME_DIR/client_etl_workflow.zip" -d "$HOME_DIR" || log_error "Failed to extract repository ZIP"
-mv "$HOME_DIR/client_etl_workflow-main" "$HOME_DIR/client_etl_workflow" || log_error "Failed to rename extracted repository directory"
-rm -f "$HOME_DIR/client_etl_workflow.zip" || log_error "Failed to remove ZIP file"
 
 # Install Caffeine
 echo "Installing Caffeine..."
