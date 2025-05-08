@@ -6,11 +6,6 @@ set -e  # Exit immediately if a command exits with a non-zero status
 CURRENT_USER=$(whoami)
 HOME_DIR="/home/$CURRENT_USER"
 PROJECT_DIR="$HOME_DIR/client_etl_workflow"
-LOG_FILE="$PROJECT_DIR/logs/install_dependencies.log"
-
-# Redirect stdout and stderr to log file
-exec > >(tee -a "$LOG_FILE") 2>&1
-echo "=== Installation started at $(date) by $CURRENT_USER ==="
 
 # Function to log errors with timestamp
 log_error() {
@@ -18,9 +13,29 @@ log_error() {
     exit 1
 }
 
+# Set up project directory
+echo "Creating project directory: $PROJECT_DIR..."
+mkdir -p "$PROJECT_DIR"
+sudo chown -R "$CURRENT_USER":etl_group "$PROJECT_DIR"
+sudo chmod -R 2770 "$PROJECT_DIR" && echo "Project directory created and permissions set." || log_error "Failed to set up project directory"
+
+# Create subdirectories
+echo "Creating necessary subdirectories..."
+mkdir -p "$PROJECT_DIR/file_watcher" "$PROJECT_DIR/file_watcher/file_watcher_temp" "$PROJECT_DIR/logs" "$PROJECT_DIR/archive" "$PROJECT_DIR/jobscripts" "$PROJECT_DIR/systemscripts" "$PROJECT_DIR/onboarding" && echo "Subdirectories created." || log_error "Failed to create subdirectories"
+sudo chown -R "$CURRENT_USER":etl_group "$PROJECT_DIR/file_watcher" "$PROJECT_DIR/file_watcher/file_watcher_temp" "$PROJECT_DIR/logs" "$PROJECT_DIR/archive" "$PROJECT_DIR/jobscripts" "$PROJECT_DIR/systemscripts" "$PROJECT_DIR/onboarding"
+sudo chmod -R 2770 "$PROJECT_DIR/file_watcher" "$PROJECT_DIR/file_watcher/file_watcher_temp" "$PROJECT_DIR/logs" "$PROJECT_DIR/archive" "$PROJECT_DIR/jobscripts" "$PROJECT_DIR/systemscripts" "$PROJECT_DIR/onboarding" && echo "Subdirectory permissions set." || log_error "Failed to set subdirectory permissions"
+
+# Define log file path and redirect stdout and stderr
+LOG_FILE="$PROJECT_DIR/logs/install_dependencies.log"
+exec > >(tee -a "$LOG_FILE") 2>&1
+echo "=== Installation started at $(date) by $CURRENT_USER ==="
+
+# Set log file permissions
+sudo chown "$CURRENT_USER":etl_group "$LOG_FILE"
+sudo chmod 660 "$LOG_FILE" && echo "Log file permissions set." || log_error "Failed to set log file permissions"
+
 # Update package lists
 echo "Updating package lists..."
-sudo apt Oldest trick -i /etc/apt/sources.list.d/oldest.list
 sudo apt update && echo "Package lists updated successfully." || log_error "Apt update failed"
 
 # Install dependencies, including PostgreSQL and client tools
@@ -65,18 +80,6 @@ sudo -u postgres psql -c "ALTER ROLE yostfunds CREATEDB;" || log_error "Failed t
 sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE postgres TO yostfunds;" || log_error "Failed to grant privileges to yostfunds"
 echo "PostgreSQL user 'yostfunds' created and configured."
 
-# Set up project directory
-echo "Creating project directory: $PROJECT_DIR..."
-mkdir -p "$PROJECT_DIR"
-sudo chown -R "$CURRENT_USER":etl_group "$PROJECT_DIR"
-sudo chmod -R 2770 "$PROJECT_DIR" && echo "Project directory created and permissions set." || log_error "Failed to set up project directory"
-
-# Create subdirectories
-echo "Creating necessary subdirectories..."
-mkdir -p "$PROJECT_DIR/file_watcher" "$PROJECT_DIR/logs" "$PROJECT_DIR/archive" "$PROJECT_DIR/jobscripts" "$PROJECT_DIR/systemscripts" && echo "Subdirectories created." || log_error "Failed to create subdirectories"
-sudo chown -R "$CURRENT_USER":etl_group "$PROJECT_DIR/file_watcher" "$PROJECT_DIR/logs" "$PROJECT_DIR/archive" "$PROJECT_DIR/jobscripts" "$PROJECT_DIR/systemscripts"
-sudo chmod -R 2770 "$PROJECT_DIR/file_watcher" "$PROJECT_DIR/logs" "$PROJECT_DIR/archive" "$PROJECT_DIR/jobscripts" "$PROJECT_DIR/systemscripts" && echo "Subdirectory permissions set." || log_error "Failed to set subdirectory permissions"
-
 # Set up Python virtual environment
 echo "Setting up Python virtual environment..."
 cd "$PROJECT_DIR"
@@ -97,10 +100,6 @@ echo "Installing Python dependencies..."
 echo "Setting permissions for virtual environment..."
 sudo chown -R "$CURRENT_USER":etl_group "$PROJECT_DIR/venv"
 sudo chmod -R 2770 "$PROJECT_DIR/venv" && echo "Virtual environment permissions set." || log_error "Failed to set virtual environment permissions"
-
-# Set log file permissions
-sudo chown "$CURRENT_USER":etl_group "$LOG_FILE"
-sudo chmod 660 "$LOG_FILE" && echo "Log file permissions set." || log_error "Failed to set log file permissions"
 
 echo "=== Setup complete at $(date) ==="
 echo "Check $LOG_FILE for any issues."
