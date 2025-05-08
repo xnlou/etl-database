@@ -1,22 +1,50 @@
 #!/bin/bash
-# Description: Configures etl_user and group for ETL workflows on Linux Mint Desktop.
+# Description: Configures etl_user, etl_group, and sets up the directory structure for ETL workflows.
 set -e  # Exit immediately if a command exits with a non-zero status
 
 # Detect the user running the script
 CURRENT_USER=$(whoami)
 HOME_DIR="/home/$CURRENT_USER"
 PROJECT_DIR="$HOME_DIR/client_etl_workflow"
-LOG_FILE="$HOME_DIR/configure_etl_user.log"
-
-# Redirect stdout and stderr to log file
-exec > >(tee -a "$LOG_FILE") 2>&1
-echo "=== User configuration started at $(date) by $CURRENT_USER ==="
+LOG_FILE="$PROJECT_DIR/logs/configure_etl_user.log"
 
 # Function to log errors with timestamp
 log_error() {
     echo "[ERROR] $(date): $1" >&2
     exit 1
 }
+
+# Function to log system checks
+log_system_check() {
+    local check_name="$1"
+    local check_result="$2"
+    echo "[CHECK] $(date): $check_name: $check_result"
+}
+
+# Set up project directory
+echo "Creating project directory: $PROJECT_DIR..."
+mkdir -p "$PROJECT_DIR"
+sudo chown -R "$CURRENT_USER":etl_group "$PROJECT_DIR"
+sudo chmod -R 2770 "$PROJECT_DIR" && echo "Project directory created and permissions set." || log_error "Failed to set up project directory" "$(echo 'Check if etl_group exists and user has sudo privileges.')"
+
+# Create subdirectories
+echo "Creating necessary subdirectories..."
+mkdir -p "$PROJECT_DIR/file_watcher" "$PROJECT_DIR/file_watcher/file_watcher_temp" "$PROJECT_DIR/logs" "$PROJECT_DIR/archive" "$PROJECT_DIR/jobscripts" "$PROJECT_DIR/systemscripts" "$PROJECT_DIR/onboarding" && echo "Subdirectories created." || log_error "Failed to create subdirectories" "$(echo 'Check disk space and permissions on parent directory.')"
+sudo chown -R "$CURRENT_USER":etl_group "$PROJECT_DIR/file_watcher" "$PROJECT_DIR/file_watcher/file_watcher_temp" "$PROJECT_DIR/logs" "$PROJECT_DIR/archive" "$PROJECT_DIR/jobscripts" "$PROJECT_DIR/systemscripts" "$PROJECT_DIR/onboarding"
+sudo chmod -R 2770 "$PROJECT_DIR/file_watcher" "$PROJECT_DIR/file_watcher/file_watcher_temp" "$PROJECT_DIR/logs" "$PROJECT_DIR/archive" "$PROJECT_DIR/jobscripts" "$PROJECT_DIR/systemscripts" "$PROJECT_DIR/onboarding" && echo "Subdirectory permissions set." || log_error "Failed to set subdirectory permissions" "$(echo 'Check if etl_group exists and user has sudo privileges.')"
+
+# Define log file path and redirect stdout and stderr
+exec > >(tee -a "$LOG_FILE") 2>&1
+echo "=== User configuration started at $(date) by $CURRENT_USER ==="
+
+# Set log file permissions
+sudo chown "$CURRENT_USER":etl_group "$LOG_FILE"
+sudo chmod 660 "$LOG_FILE" && echo "Log file permissions set." || log_error "Failed to set log file permissions" "$(echo 'Check if etl_group exists and user has sudo privileges.')"
+
+# Pre-execution system checks
+log_system_check "Checking if etl_group exists" "$(getent group etl_group || echo 'Not found')"
+log_system_check "Checking network connectivity" "$(ping -c 1 8.8.8.8 > /dev/null 2>&1 && echo 'Success' || echo 'Failed')"
+log_system_check "Checking disk space on /home" "$(df -h /home | tail -1)"
 
 # Create etl_group if it doesn't exist
 echo "Creating etl_group if it doesn't exist..."
@@ -33,14 +61,6 @@ fi
 # Add current user to etl_group
 echo "Adding $CURRENT_USER to etl_group..."
 sudo usermod -aG etl_group "$CURRENT_USER" && echo "$CURRENT_USER added to etl_group." || log_error "Failed to add $CURRENT_USER to etl_group"
-
-# Create project directory
-echo "Creating project directory: $PROJECT_DIR..."
-mkdir -p "$PROJECT_DIR" || log_error "Failed to create project directory"
-sudo chown -R "$CURRENT_USER":etl_group "$PROJECT_DIR"
-sudo chmod -R 2770 "$PROJECT_DIR"  # Group rwx, setgid
-sudo setfacl -R -m g:etl_group:rwx "$PROJECT_DIR"
-sudo setfacl -R -d -m g:etl_group:rwx "$PROJECT_DIR" && echo "Directory permissions set." || log_error "Failed to set directory permissions"
 
 # Configure sudoers for etl_user (limit to necessary commands)
 echo "Allowing etl_user to run specific commands without password..."
