@@ -26,7 +26,11 @@ sudo apt update && echo "Package lists updated successfully." || log_error "Apt 
 # Install dependencies, including PostgreSQL, client tools, and additional packages
 echo "Installing dependencies..."
 sudo apt install -y git acl postgresql postgresql-contrib cron python3.12 python3.12-venv python3.12-dev \
-    libpq-dev build-essential openssh-server && echo "Dependencies installed." || log_error "Failed to install dependencies: git, acl, postgresql, etc."
+    libpq-dev build-essential openssh-server && echo "Dependencies installed." || log_error "Failed to install dependencies"
+
+# Configure Git global username to the current user
+echo "Configuring Git global username..."
+git config --global user.name "$CURRENT_USER" && echo "Git username set to '$CURRENT_USER'." || log_error "Failed to set Git username"
 
 # Install DBeaver Community Edition
 echo "Installing DBeaver Community Edition..."
