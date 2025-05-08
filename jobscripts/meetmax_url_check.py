@@ -3,7 +3,6 @@ import os
 
 # Add the absolute path to the parent directory
 sys.path.append('/home/yostfundsadmintest1/client_etl_workflow')
-
 import threading
 import requests
 import re
@@ -14,6 +13,7 @@ import time
 import uuid
 import csv
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import threading  # For thread state logging
 from systemscripts.user_utils import get_username
 from systemscripts.log_utils import log_message
 from systemscripts.web_utils import fetch_url
@@ -26,7 +26,7 @@ USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTM
 MAX_RETRIES = 5
 INITIAL_DELAY = 5.0
 TASK_SUBMISSION_DELAY = 0.5
-PERIODIC_INTERVAL = 1800
+PERIODIC_INTERVAL = 5  # Reduced for testing to ensure periodic saves
 
 # Define directories
 FILE_WATCHER_TEMP_DIR = FILE_WATCHER_DIR / "file_watcher_temp"
@@ -37,7 +37,7 @@ ensure_directory_exists(FILE_WATCHER_DIR)
 ensure_directory_exists(FILE_WATCHER_TEMP_DIR)
 
 # Define Event IDs range
-event_ids = range(70841, 112000)
+event_ids = range(70841, 70861)
 
 # Global lock and variables
 results_lock = threading.Lock()
@@ -212,20 +212,28 @@ def meetmax_url_check():
     total = len(event_ids)
     event_counter = 0
 
-    start_timestamp = datetime.now().strftime("%Y%m%dT%H%M%S")  # Set fixed timestamp at script start
+    start_timestamp = datetime.now().strftime("%Y%m%dT%H%M%S")
     log_file = LOG_DIR / f"meetmax_url_check_{start_timestamp}"
     temp_csv_file = FILE_WATCHER_TEMP_DIR / f"{start_timestamp}_MeetMaxURLCheck.csv"
     final_csv_file = FILE_WATCHER_DIR / f"{start_timestamp}_MeetMaxURLCheck.csv"
 
-    user_cache = get_username()  # Expect a single return value
+    user_cache = get_username()
     log_message(log_file, "Initialization", f"Username: {user_cache}", run_uuid=run_uuid, stepcounter="Initialization_0", user=user_cache, script_start_time=script_start_time)
     log_message(log_file, "Initialization", f"Script started at {start_timestamp}", run_uuid=run_uuid, stepcounter="Initialization_1", user=user_cache, script_start_time=script_start_time)
+    log_message(log_file, "Initialization", f"Final CSV path: {final_csv_file}", run_uuid=run_uuid, stepcounter="Initialization_2", user=user_cache, script_start_time=script_start_time)
+
+    # Log active threads at start
+    log_message(log_file, "Initialization", f"Active threads at start: {threading.active_count()}", run_uuid=run_uuid, stepcounter="Initialization_3", user=user_cache, script_start_time=script_start_time)
+    log_message(log_file, "Initialization", f"Thread names: {[t.name for t in threading.enumerate()]}", run_uuid=run_uuid, stepcounter="Initialization_4", user=user_cache, script_start_time=script_start_time)
 
     # Start periodic saving
+    log_message(log_file, "Initialization", "Starting periodic save thread", run_uuid=run_uuid, stepcounter="Initialization_5", user=user_cache, script_start_time=script_start_time)
     periodic_thread = periodic_task(save_results, PERIODIC_INTERVAL, stop_event)
+    log_message(log_file, "Initialization", f"Periodic thread started, is_alive: {periodic_thread.is_alive()}", run_uuid=run_uuid, stepcounter="Initialization_6", user=user_cache, script_start_time=script_start_time)
 
     with ThreadPoolExecutor(max_workers=2) as executor:
         future_to_event = {executor.submit(process_event, event_id, log_file): event_id for event_id in event_ids}
+        log_message(log_file, "Processing", f"Submitted {len(future_to_event)} tasks to ThreadPoolExecutor", run_uuid=run_uuid, stepcounter="Processing_0", user=user_cache, script_start_time=script_start_time)
         for future in as_completed(future_to_event):
             event_id = future_to_event[future]
             try:
@@ -252,21 +260,52 @@ def meetmax_url_check():
                     results.append(error_result)
                     log_message(log_file, "Error", f"Appended error result for EventID {event_id}, current results length: {len(results)}", run_uuid=run_uuid, stepcounter=f"event_{event_id}", user=user_cache, script_start_time=script_start_time)
                 event_counter += 1
+        log_message(log_file, "Processing", f"Completed ThreadPoolExecutor loop, processed {event_counter} events", run_uuid=run_uuid, stepcounter="Processing_1", user=user_cache, script_start_time=script_start_time)
 
-    log_message(log_file, "Finalization", "Stopping periodic save thread", run_uuid=run_uuid, stepcounter="Finalization_0", user=user_cache, script_start_time=script_start_time)
+    # Log active threads after processing
+    log_message(log_file, "Finalization", f"Active threads after processing: {threading.active_count()}", run_uuid=run_uuid, stepcounter="Finalization_0", user=user_cache, script_start_time=script_start_time)
+    log_message(log_file, "Finalization", f"Thread names: {[t.name for t in threading.enumerate()]}", run_uuid=run_uuid, stepcounter="Finalization_1", user=user_cache, script_start_time=script_start_time)
+
+    # Stop periodic save thread
+    log_message(log_file, "Finalization", "Setting stop_event for periodic save thread", run_uuid=run_uuid, stepcounter="Finalization_2", user=user_cache, script_start_time=script_start_time)
     stop_event.set()
-    periodic_thread.join()
+    log_message(log_file, "Finalization", f"Stop event set, periodic thread is_alive: {periodic_thread.is_alive()}", run_uuid=run_uuid, stepcounter="Finalization_3", user=user_cache, script_start_time=script_start_time)
 
+    # Attempt to join periodic thread with timeout
+    log_message(log_file, "Finalization", "Joining periodic save thread with 10-second timeout", run_uuid=run_uuid, stepcounter="Finalization_4", user=user_cache, script_start_time=script_start_time)
+    try:
+        periodic_thread.join(timeout=10.0)
+        if periodic_thread.is_alive():
+            log_message(log_file, "Error", "Periodic thread did not terminate within 10 seconds", run_uuid=run_uuid, stepcounter="Finalization_5", user=user_cache, script_start_time=script_start_time)
+        else:
+            log_message(log_file, "Finalization", "Periodic thread terminated successfully", run_uuid=run_uuid, stepcounter="Finalization_6", user=user_cache, script_start_time=script_start_time)
+    except Exception as e:
+        log_message(log_file, "Error", f"Error joining periodic thread: {str(e)}", run_uuid=run_uuid, stepcounter="Finalization_7", user=user_cache, script_start_time=script_start_time)
+
+    # Log active threads after joining
+    log_message(log_file, "Finalization", f"Active threads after joining: {threading.active_count()}", run_uuid=run_uuid, stepcounter="Finalization_8", user=user_cache, script_start_time=script_start_time)
+    log_message(log_file, "Finalization", f"Thread names: {[t.name for t in threading.enumerate()]}", run_uuid=run_uuid, stepcounter="Finalization_9", user=user_cache, script_start_time=script_start_time)
+
+    # Final save
+    log_message(log_file, "Finalization", f"Starting final save, results length: {len(results)}", run_uuid=run_uuid, stepcounter="Finalization_10", user=user_cache, script_start_time=script_start_time)
     if results:
         df = pd.DataFrame(results)
+        log_message(log_file, "FinalSave", f"Attempting to save {len(results)} rows to {final_csv_file}", run_uuid=run_uuid, stepcounter="FinalSave_0", user=user_cache, script_start_time=script_start_time)
         try:
             df.to_csv(final_csv_file, index=False, quoting=csv.QUOTE_NONNUMERIC, quotechar='"')
+            log_message(log_file, "FinalSave", f"CSV write completed for {final_csv_file}", run_uuid=run_uuid, stepcounter="FinalSave_1", user=user_cache, script_start_time=script_start_time)
             os.chmod(final_csv_file, 0o660)
-            log_message(log_file, "FinalSave", f"Wrote {len(results)} rows to {final_csv_file}", run_uuid=run_uuid, stepcounter="FinalSave_0", user=user_cache, script_start_time=script_start_time)
+            log_message(log_file, "FinalSave", f"Permissions set for {final_csv_file}, wrote {len(results)} rows", run_uuid=run_uuid, stepcounter="FinalSave_2", user=user_cache, script_start_time=script_start_time)
         except (PermissionError, OSError) as e:
-            log_message(log_file, "Error", f"Failed to save final results to {final_csv_file}: {str(e)}", run_uuid=run_uuid, stepcounter="FinalSave_0", user=user_cache, script_start_time=script_start_time)
+            log_message(log_file, "Error", f"Failed to save final results to {final_csv_file}: {str(e)}", run_uuid=run_uuid, stepcounter="FinalSave_3", user=user_cache, script_start_time=script_start_time)
+    else:
+        log_message(log_file, "FinalSave", "No results to save", run_uuid=run_uuid, stepcounter="FinalSave_4", user=user_cache, script_start_time=script_start_time)
 
-    log_message(log_file, "Finalization", f"Completed: Processed {event_counter}/{total} URLs", run_uuid=run_uuid, stepcounter="Finalization_1", user=user_cache, script_start_time=script_start_time)
+    # Log completion
+    log_message(log_file, "Finalization", f"Completed: Processed {event_counter}/{total} URLs", run_uuid=run_uuid, stepcounter="Finalization_11", user=user_cache, script_start_time=script_start_time)
+    log_message(log_file, "Finalization", f"Active threads at end: {threading.active_count()}", run_uuid=run_uuid, stepcounter="Finalization_12", user=user_cache, script_start_time=script_start_time)
+    log_message(log_file, "Finalization", f"Thread names: {[t.name for t in threading.enumerate()]}", run_uuid=run_uuid, stepcounter="Finalization_13", user=user_cache, script_start_time=script_start_time)
+    log_message(log_file, "Finalization", "Script execution completed", run_uuid=run_uuid, stepcounter="Finalization_14", user=user_cache, script_start_time=script_start_time)
 
 if __name__ == "__main__":
     meetmax_url_check()
