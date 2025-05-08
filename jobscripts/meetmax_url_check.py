@@ -12,7 +12,7 @@ import pandas as pd
 from datetime import datetime
 import time
 import uuid
-import csv  # Added import for csv module
+import csv
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from systemscripts.user_utils import get_username
 from systemscripts.log_utils import log_message
@@ -37,7 +37,7 @@ ensure_directory_exists(FILE_WATCHER_DIR)
 ensure_directory_exists(FILE_WATCHER_TEMP_DIR)
 
 # Define Event IDs range
-event_ids = range(70841, 75470)
+event_ids = range(70841, 70950)
 
 # Global lock and variables
 results_lock = threading.Lock()
@@ -46,17 +46,21 @@ stop_event = threading.Event()
 script_start_time = time.time()
 run_uuid = str(uuid.uuid4())
 process_counters = {}  # Track counters for non-event process types
+start_timestamp = None  # Will be set at script start
 
 def save_results():
-    """Save current results to a temporary CSV file."""
+    """Save current results to a temporary CSV file, overwriting with fixed timestamp."""
+    global user_cache, log_file, start_timestamp
     with results_lock:
         if results:
-            timestamp = datetime.now().strftime("%Y%m%dT%H%M%S")
-            temp_csv_file = FILE_WATCHER_TEMP_DIR / f"{timestamp}_MeetMaxURLCheck.csv"
+            temp_csv_file = FILE_WATCHER_TEMP_DIR / f"{start_timestamp}_MeetMaxURLCheck.csv"
             df = pd.DataFrame(results)
-            df.to_csv(temp_csv_file, index=False, quoting=csv.QUOTE_NONNUMERIC, quotechar='"')
-            os.chmod(temp_csv_file, 0o660)
-            log_message(log_file, "PeriodicSave", f"Saved {len(results)} rows to {temp_csv_file}", run_uuid=run_uuid, stepcounter="PeriodicSave_0", user=user_cache, script_start_time=script_start_time)
+            try:
+                df.to_csv(temp_csv_file, index=False, quoting=csv.QUOTE_NONNUMERIC, quotechar='"')
+                os.chmod(temp_csv_file, 0o660)
+                log_message(log_file, "PeriodicSave", f"Saved {len(results)} rows to {temp_csv_file}", run_uuid=run_uuid, stepcounter="PeriodicSave_0", user=user_cache, script_start_time=script_start_time)
+            except (PermissionError, OSError) as e:
+                log_message(log_file, "Error", f"Failed to save results to {temp_csv_file}: {str(e)}", run_uuid=run_uuid, stepcounter="PeriodicSave_0", user=user_cache, script_start_time=script_start_time)
 
 def process_event(event_id, log_file):
     """Process a single event ID."""
@@ -203,19 +207,19 @@ def process_event(event_id, log_file):
 
 def meetmax_url_check():
     """Check MeetMax event URLs and save results to CSV."""
-    global results, stop_event, script_start_time, run_uuid, user_cache, log_file
+    global results, stop_event, script_start_time, run_uuid, user_cache, log_file, start_timestamp
     results = []
     total = len(event_ids)
     event_counter = 0
 
-    timestamp = datetime.now().strftime("%Y%m%dT%H%M%S")
-    log_file = LOG_DIR / f"meetmax_url_check_{timestamp}"
-    temp_csv_file = FILE_WATCHER_TEMP_DIR / f"{timestamp}_MeetMaxURLCheck.csv"
-    final_csv_file = FILE_WATCHER_DIR / f"{timestamp}_MeetMaxURLCheck.csv"
+    start_timestamp = datetime.now().strftime("%Y%m%dT%H%M%S")  # Set fixed timestamp at script start
+    log_file = LOG_DIR / f"meetmax_url_check_{start_timestamp}"
+    temp_csv_file = FILE_WATCHER_TEMP_DIR / f"{start_timestamp}_MeetMaxURLCheck.csv"
+    final_csv_file = FILE_WATCHER_DIR / f"{start_timestamp}_MeetMaxURLCheck.csv"
 
     user_cache = get_username()  # Expect a single return value
     log_message(log_file, "Initialization", f"Username: {user_cache}", run_uuid=run_uuid, stepcounter="Initialization_0", user=user_cache, script_start_time=script_start_time)
-    log_message(log_file, "Initialization", f"Script started at {timestamp}", run_uuid=run_uuid, stepcounter="Initialization_1", user=user_cache, script_start_time=script_start_time)
+    log_message(log_file, "Initialization", f"Script started at {start_timestamp}", run_uuid=run_uuid, stepcounter="Initialization_1", user=user_cache, script_start_time=script_start_time)
 
     # Start periodic saving
     periodic_thread = periodic_task(save_results, PERIODIC_INTERVAL, stop_event)
@@ -255,9 +259,12 @@ def meetmax_url_check():
 
     if results:
         df = pd.DataFrame(results)
-        df.to_csv(final_csv_file, index=False, quoting=csv.QUOTE_NONNUMERIC, quotechar='"')
-        os.chmod(final_csv_file, 0o660)
-        log_message(log_file, "FinalSave", f"Wrote {len(results)} rows to {final_csv_file}", run_uuid=run_uuid, stepcounter="FinalSave_0", user=user_cache, script_start_time=script_start_time)
+        try:
+            df.to_csv(final_csv_file, index=False, quoting=csv.QUOTE_NONNUMERIC, quotechar='"')
+            os.chmod(final_csv_file, 0o660)
+            log_message(log_file, "FinalSave", f"Wrote {len(results)} rows to {final_csv_file}", run_uuid=run_uuid, stepcounter="FinalSave_0", user=user_cache, script_start_time=script_start_time)
+        except (PermissionError, OSError) as e:
+            log_message(log_file, "Error", f"Failed to save final results to {final_csv_file}: {str(e)}", run_uuid=run_uuid, stepcounter="FinalSave_0", user=user_cache, script_start_time=script_start_time)
 
     log_message(log_file, "Finalization", f"Completed: Processed {event_counter}/{total} URLs", run_uuid=run_uuid, stepcounter="Finalization_1", user=user_cache, script_start_time=script_start_time)
 
