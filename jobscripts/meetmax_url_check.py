@@ -1,6 +1,5 @@
 import sys
 import os
-
 # Add the absolute path to the parent directory
 sys.path.append('/home/yostfundsadmintest1/client_etl_workflow')
 import threading
@@ -25,7 +24,7 @@ USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTM
 MAX_RETRIES = 3  # Reduced to avoid excessive retries on rate limits
 INITIAL_DELAY = 10.0  # Increased for longer retry backoff
 TASK_SUBMISSION_DELAY = 3.0  # Enforce delay between task submissions
-PERIODIC_INTERVAL = 60  # Increased for longer runs
+PERIODIC_INTERVAL = 300  # Increased for longer runs
 
 # Define directories
 FILE_WATCHER_TEMP_DIR = FILE_WATCHER_DIR / "file_watcher_temp"
@@ -36,7 +35,7 @@ ensure_directory_exists(FILE_WATCHER_DIR)
 ensure_directory_exists(FILE_WATCHER_TEMP_DIR)
 
 # Define Event IDs range
-event_ids = range(92567, 120000)  # Adjusted to longer range
+event_ids = range(92567, 120000)
 
 # Global lock and variables
 results_lock = threading.Lock()
@@ -50,16 +49,21 @@ start_timestamp = None
 def save_results():
     """Save current results to a temporary CSV file, overwriting with fixed timestamp."""
     global user_cache, log_file, start_timestamp
+    log_message(log_file, "PeriodicSave", f"save_results called, current results length: {len(results)}", run_uuid=run_uuid, stepcounter="PeriodicSave_call", user=user_cache, script_start_time=script_start_time)
     with results_lock:
         if results:
             temp_csv_file = FILE_WATCHER_TEMP_DIR / f"{start_timestamp}_MeetMaxURLCheck.csv"
+            log_message(log_file, "PeriodicSave", f"Attempting to save to {temp_csv_file}", run_uuid=run_uuid, stepcounter="PeriodicSave_1", user=user_cache, script_start_time=script_start_time)
             df = pd.DataFrame(results)
+            df = df.sort_values(by='EventID')
             try:
                 df.to_csv(temp_csv_file, index=False, quoting=csv.QUOTE_NONNUMERIC, quotechar='"')
                 os.chmod(temp_csv_file, 0o660)
                 log_message(log_file, "PeriodicSave", f"Saved {len(results)} rows to {temp_csv_file}", run_uuid=run_uuid, stepcounter="PeriodicSave_0", user=user_cache, script_start_time=script_start_time)
             except (PermissionError, OSError) as e:
                 log_message(log_file, "Error", f"Failed to save results to {temp_csv_file}: {str(e)}", run_uuid=run_uuid, stepcounter="PeriodicSave_0", user=user_cache, script_start_time=script_start_time)
+        else:
+            log_message(log_file, "PeriodicSave", "No results to save yet", run_uuid=run_uuid, stepcounter="PeriodicSave_2", user=user_cache, script_start_time=script_start_time)
 
 def process_event(event_id, log_file):
     """Process a single event ID."""
@@ -230,22 +234,16 @@ def meetmax_url_check():
     periodic_thread = periodic_task(save_results, PERIODIC_INTERVAL, stop_event)
     log_message(log_file, "Initialization", f"Periodic thread started, is_alive: {periodic_thread.is_alive()}", run_uuid=run_uuid, stepcounter="Initialization_6", user=user_cache, script_start_time=script_start_time)
 
-    with ThreadPoolExecutor(max_workers=1) as executor:  # Reduced to 1 to avoid concurrent requests
-        future_to_event = {}
+    with ThreadPoolExecutor(max_workers=1) as executor:
         for event_id in event_ids:
+            log_message(log_file, "Processing", f"Submitting task for EventID {event_id}", run_uuid=run_uuid, stepcounter=f"submit_{event_id}", user=user_cache, script_start_time=script_start_time)
             future = executor.submit(process_event, event_id, log_file)
-            future_to_event[future] = event_id
-            log_message(log_file, "Processing", f"Submitted task for EventID {event_id}", run_uuid=run_uuid, stepcounter=f"submit_{event_id}", user=user_cache, script_start_time=script_start_time)
-            time.sleep(TASK_SUBMISSION_DELAY)  # Enforce delay between submissions
-        log_message(log_file, "Processing", f"Submitted {len(future_to_event)} tasks to ThreadPoolExecutor", run_uuid=run_uuid, stepcounter="Processing_0", user=user_cache, script_start_time=script_start_time)
-        for future in as_completed(future_to_event):
-            event_id = future_to_event[future]
             try:
-                result = future.result()
+                result = future.result()  # Wait for the task to complete
                 with results_lock:
-                    log_message(log_file, "EventProcessing", f"Before appending result for EventID {event_id}", run_uuid=run_uuid, stepcounter=f"event_{event_id}", user=user_cache, script_start_time=script_start_time)
+                    log_message(log_file, "EventProcessing", f"Appending result for EventID {event_id}", run_uuid=run_uuid, stepcounter=f"event_{event_id}_append", user=user_cache, script_start_time=script_start_time)
                     results.append(result)
-                    log_message(log_file, "EventProcessing", f"Appended result for EventID {event_id}, current results length: {len(results)}", run_uuid=run_uuid, stepcounter=f"event_{event_id}", user=user_cache, script_start_time=script_start_time)
+                    log_message(log_file, "EventProcessing", f"Appended result for EventID {event_id}, current results length: {len(results)}", run_uuid=run_uuid, stepcounter=f"event_{event_id}_appended", user=user_cache, script_start_time=script_start_time)
                 event_counter += 1
             except Exception as e:
                 log_message(log_file, "Error", f"Exception processing EventID {event_id}: {str(e)}", run_uuid=run_uuid, stepcounter=f"event_{event_id}", user=user_cache, script_start_time=script_start_time)
@@ -260,11 +258,12 @@ def meetmax_url_check():
                         "StatusCode": "Error",
                         "Title": ""
                     }
-                    log_message(log_file, "Error", f"Before appending error result for EventID {event_id}", run_uuid=run_uuid, stepcounter=f"event_{event_id}", user=user_cache, script_start_time=script_start_time)
+                    log_message(log_file, "Error", f"Appending error result for EventID {event_id}", run_uuid=run_uuid, stepcounter=f"event_{event_id}_append", user=user_cache, script_start_time=script_start_time)
                     results.append(error_result)
-                    log_message(log_file, "Error", f"Appended error result for EventID {event_id}, current results length: {len(results)}", run_uuid=run_uuid, stepcounter=f"event_{event_id}", user=user_cache, script_start_time=script_start_time)
+                    log_message(log_file, "Error", f"Appended error result for EventID {event_id}, current results length: {len(results)}", run_uuid=run_uuid, stepcounter=f"event_{event_id}_appended", user=user_cache, script_start_time=script_start_time)
                 event_counter += 1
-        log_message(log_file, "Processing", f"Completed ThreadPoolExecutor loop, processed {event_counter} events", run_uuid=run_uuid, stepcounter="Processing_1", user=user_cache, script_start_time=script_start_time)
+            time.sleep(TASK_SUBMISSION_DELAY)  # Delay between task submissions
+        log_message(log_file, "Processing", f"Processed {event_counter} events", run_uuid=run_uuid, stepcounter="Processing_1", user=user_cache, script_start_time=script_start_time)
 
     # Log active threads after processing
     log_message(log_file, "Finalization", f"Active threads after processing: {threading.active_count()}", run_uuid=run_uuid, stepcounter="Finalization_0", user=user_cache, script_start_time=script_start_time)
@@ -294,6 +293,7 @@ def meetmax_url_check():
     log_message(log_file, "Finalization", f"Starting final save, results length: {len(results)}", run_uuid=run_uuid, stepcounter="Finalization_10", user=user_cache, script_start_time=script_start_time)
     if results:
         df = pd.DataFrame(results)
+        df = df.sort_values(by='EventID')
         log_message(log_file, "FinalSave", f"Attempting to save {len(results)} rows to {final_csv_file}", run_uuid=run_uuid, stepcounter="FinalSave_0", user=user_cache, script_start_time=script_start_time)
         try:
             df.to_csv(final_csv_file, index=False, quoting=csv.QUOTE_NONNUMERIC, quotechar='"')
