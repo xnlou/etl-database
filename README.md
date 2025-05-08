@@ -46,7 +46,17 @@ To set up the ETL server, run the scripts in the following order. Ensure each sc
      ```
    - **Log File**: Check `/home/$USER/CL_onboarding_YYYYMMDD_HHMMSS.log` for details.
 
-2. **`configure_etl_user.sh`**  
+2. **`disable_power_saving.sh`**  
+   This script disables power-saving features to ensure the server runs 24/7 without sleeping or suspending.
+   - **Purpose**: Disables GUI sleep/suspend, console blanking, and systemd sleep states.
+   - **Run Command**:
+     ```bash
+     chmod +x disable_power_saving.sh
+     ./disable_power_saving.sh
+     ```
+   - **Log File**: Check `/home/$USER/disable_power_saving_YYYYMMDD_HHMMSS.log` for details.
+
+3. **`configure_etl_user.sh`**  
    This script sets up the user, group, and directory structure for the ETL pipeline.
    - **Purpose**: Creates `etl_user` and `etl_group`, sets up the project directory structure, and configures a cron job for automated ETL runs.
    - **Run Command**:
@@ -56,7 +66,7 @@ To set up the ETL server, run the scripts in the following order. Ensure each sc
      ```
    - **Log File**: Check `/home/$USER/client_etl_workflow/logs/configure_etl_user.log` for details.
 
-3. **`install_dependencies.sh`**  
+4. **`install_dependencies.sh`**  
    This script installs all necessary dependencies and configures the environment.
    - **Purpose**: Installs PostgreSQL, Python 3.12, Git, DBeaver, pgAdmin, Visual Studio Code, and other dependencies, sets up a PostgreSQL user, and configures a Python virtual environment.
    - **Run Command**:
@@ -77,7 +87,7 @@ To set up the ETL server, run the scripts in the following order. Ensure each sc
 - **Secure File Exchange**: Set up SFTP or a cloud-based solution (e.g., Nextcloud) for client file sharing, ensuring strong authentication and encryption.
 
 ## Additional Notes
-- **Logging**: Each script generates a log file in `/home/$USER/client_etl_workflow/logs/` (except `CL_onboarding.sh`, which logs to `/home/$USER/`). Check these logs for debugging issues.
+- **Logging**: Each script generates a log file in `/home/$USER/client_etl_workflow/logs/` (except `CL_onboarding.sh` and `disable_power_saving.sh`, which log to `/home/$USER/`). Check these logs for debugging issues.
 - **Maintenance**:
   - Regularly check disk space (`df -h`) to ensure storage isn’t running low.
   - Monitor PostgreSQL performance and optimize queries if data volume grows.
@@ -105,6 +115,7 @@ To set up the ETL server, run the scripts in the following order. Ensure each sc
 - **Script Fails**: Check the relevant log file for error messages. Common issues include network connectivity, missing dependencies, or permission errors.
 - **PostgreSQL Connection Issues**: Verify the user credentials and ensure the service is running (`sudo systemctl status postgresql`).
 - **Cron Job Not Running**: Check `/etc/cron.d/etl_jobs` for the correct script path and ensure the cron service is active (`sudo systemctl status cron`).
+- **Server Goes to Sleep**: If the system still enters sleep mode, verify the changes made by `disable_power_saving.sh` in `/etc/default/grub` and `/etc/systemd/logind.conf`. Reboot to ensure GRUB changes take effect.
 
 ## Future Enhancements
 - Add monitoring with tools like Prometheus or Nagios to track system and ETL job performance.
