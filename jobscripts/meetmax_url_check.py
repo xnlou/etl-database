@@ -13,7 +13,6 @@ import time
 import uuid
 import csv
 from concurrent.futures import ThreadPoolExecutor, as_completed
-import threading  # For thread state logging
 from systemscripts.user_utils import get_username
 from systemscripts.log_utils import log_message
 from systemscripts.web_utils import fetch_url
@@ -23,10 +22,10 @@ from systemscripts.directory_management import LOG_DIR, FILE_WATCHER_DIR, ensure
 # Define constants
 BASE_URL = "https://www.meetmax.com/sched/event_{}/"
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-MAX_RETRIES = 5
-INITIAL_DELAY = 5.0
-TASK_SUBMISSION_DELAY = 0.5
-PERIODIC_INTERVAL = 5  # Reduced for testing to ensure periodic saves
+MAX_RETRIES = 3  # Reduced to avoid excessive retries on rate limits
+INITIAL_DELAY = 10.0  # Increased for longer retry backoff
+TASK_SUBMISSION_DELAY = 3.0  # Enforce delay between task submissions
+PERIODIC_INTERVAL = 60  # Increased for longer runs
 
 # Define directories
 FILE_WATCHER_TEMP_DIR = FILE_WATCHER_DIR / "file_watcher_temp"
@@ -37,7 +36,7 @@ ensure_directory_exists(FILE_WATCHER_DIR)
 ensure_directory_exists(FILE_WATCHER_TEMP_DIR)
 
 # Define Event IDs range
-event_ids = range(70841, 70861)
+event_ids = range(92567, 120000)  # Adjusted to longer range
 
 # Global lock and variables
 results_lock = threading.Lock()
@@ -45,8 +44,8 @@ results = []
 stop_event = threading.Event()
 script_start_time = time.time()
 run_uuid = str(uuid.uuid4())
-process_counters = {}  # Track counters for non-event process types
-start_timestamp = None  # Will be set at script start
+process_counters = {}
+start_timestamp = None
 
 def save_results():
     """Save current results to a temporary CSV file, overwriting with fixed timestamp."""
@@ -86,7 +85,7 @@ def process_event(event_id, log_file):
     title = ""
 
     try:
-        public_response = fetch_url(session, public_url, retries=MAX_RETRIES, initial_delay=INITIAL_DELAY)
+        public_response = fetch_url(session, public_url, retries=MAX_RETRIES, initial_delay=INITIAL_DELAY, log_file=log_file, run_uuid=run_uuid, user=user_cache, script_start_time=script_start_time)
         if public_response is None:
             log_message(log_file, "Error", f"Failed to fetch public page for EventID {event_id}", run_uuid=run_uuid, stepcounter=f"event_{event_id}", user=user_cache, script_start_time=script_start_time)
             return {
@@ -120,7 +119,7 @@ def process_event(event_id, log_file):
                 "Accept-Language": "en-US,en;q=0.9",
                 "Connection": "keep-alive",
                 "User-Agent": USER_AGENT
-            })
+            }, log_file=log_file, run_uuid=run_uuid, user=user_cache, script_start_time=script_start_time)
             if private_response is None:
                 log_message(log_file, "Error", f"Failed to fetch private page for EventID {event_id}", run_uuid=run_uuid, stepcounter=f"event_{event_id}", user=user_cache, script_start_time=script_start_time)
                 return {
@@ -231,8 +230,13 @@ def meetmax_url_check():
     periodic_thread = periodic_task(save_results, PERIODIC_INTERVAL, stop_event)
     log_message(log_file, "Initialization", f"Periodic thread started, is_alive: {periodic_thread.is_alive()}", run_uuid=run_uuid, stepcounter="Initialization_6", user=user_cache, script_start_time=script_start_time)
 
-    with ThreadPoolExecutor(max_workers=2) as executor:
-        future_to_event = {executor.submit(process_event, event_id, log_file): event_id for event_id in event_ids}
+    with ThreadPoolExecutor(max_workers=1) as executor:  # Reduced to 1 to avoid concurrent requests
+        future_to_event = {}
+        for event_id in event_ids:
+            future = executor.submit(process_event, event_id, log_file)
+            future_to_event[future] = event_id
+            log_message(log_file, "Processing", f"Submitted task for EventID {event_id}", run_uuid=run_uuid, stepcounter=f"submit_{event_id}", user=user_cache, script_start_time=script_start_time)
+            time.sleep(TASK_SUBMISSION_DELAY)  # Enforce delay between submissions
         log_message(log_file, "Processing", f"Submitted {len(future_to_event)} tasks to ThreadPoolExecutor", run_uuid=run_uuid, stepcounter="Processing_0", user=user_cache, script_start_time=script_start_time)
         for future in as_completed(future_to_event):
             event_id = future_to_event[future]
