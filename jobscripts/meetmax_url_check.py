@@ -3,6 +3,7 @@ import os
 
 # Add the parent directory to sys.path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 import threading
 import requests
 import re
@@ -31,6 +32,9 @@ FILE_WATCHER_TEMP_DIR = FILE_WATCHER_DIR / "file_watcher_temp"
 ensure_directory_exists(LOG_DIR)
 ensure_directory_exists(FILE_WATCHER_DIR)
 ensure_directory_exists(FILE_WATCHER_TEMP_DIR)
+
+# Define Event IDs range
+event_ids = range(70841, 70950)
 
 # Global lock and variables
 results_lock = threading.Lock()
@@ -80,7 +84,7 @@ def get_username():
     return "unknown", log_messages
 
 def log_message(log_file, process_type, message, event_id=None):
-    """Log a message to a CSV file with step_runtime as time between consecutive log_ids."""
+    """Log a message to both a CSV and a TXT file with step_runtime as time between consecutive log_ids."""
     global log_id_counter, last_log_time, process_counters
     current_time = time.time()
     timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -106,23 +110,53 @@ def log_message(log_file, process_type, message, event_id=None):
     log_entry = {
         "log_id": log_id,
         "timestamp": timestamp,
-        "stepcounter": stepcounter,
         "run_uuid": run_uuid,
         "process_type": process_type,
+        "stepcounter": stepcounter,
+        "user": user_cache,
         "step_runtime": f"{step_runtime:.3f}",
         "total_runtime": f"{total_runtime:.3f}",
-        "message": message,
-        "user": user_cache
+        "message": message
     }
+    
+    # Define column order
+    column_order = [
+        "log_id",
+        "timestamp",
+        "run_uuid",
+        "process_type",
+        "stepcounter",
+        "user",
+        "step_runtime",
+        "total_runtime",
+        "message"
+    ]
     
     # Write to CSV
     file_exists = os.path.exists(log_file)
     with open(log_file, "a", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=log_entry.keys())
+        writer = csv.DictWriter(f, fieldnames=column_order)
         if not file_exists:
             writer.writeheader()
-        writer.writerow(log_entry)
+        writer.writerow({k: log_entry[k] for k in column_order})
     os.chmod(log_file, 0o660)
+
+    # Write to TXT
+    txt_log_file = log_file.with_suffix('.txt')
+    txt_entry = (
+        f"Log ID: {log_entry['log_id']}\t"
+        f"Timestamp: {log_entry['timestamp']}\t"
+        f"Run UUID: {log_entry['run_uuid']}\t"
+        f"Process Type: {log_entry['process_type']}\t"
+        f"Stepcounter: {log_entry['stepcounter']}\t"
+        f"User: {log_entry['user']}\t"
+        f"Step Runtime: {log_entry['step_runtime']}\t"
+        f"Total Runtime: {log_entry['total_runtime']}\t"
+        f"Message: {log_entry['message']}\n"
+    )
+    with open(txt_log_file, "a") as f:
+        f.write(txt_entry)
+    os.chmod(txt_log_file, 0o660)
 
 def fetch_url(session, url, event_id, log_file, headers=None):
     """Fetch a URL with retry logic and exponential backoff."""
@@ -280,7 +314,6 @@ def meetmax_url_check():
     """Check MeetMax event URLs and save results to CSV."""
     global results, user_cache, last_log_time, log_id_counter, process_counters
     results = []
-    event_ids = range(70841, 75470)
     total = len(event_ids)
     event_counter = 0
     log_id_counter = 0
