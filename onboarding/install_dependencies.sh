@@ -39,6 +39,17 @@ echo "deb https://dbeaver.io/debs/dbeaver-ce /" | sudo tee /etc/apt/sources.list
 sudo apt update && echo "DBeaver repository updated." || log_error "Failed to update DBeaver repository"
 sudo apt install -y dbeaver-ce && echo "DBeaver installed." || log_error "Failed to install DBeaver"
 
+# Install pgAdmin 4
+echo "Installing pgAdmin 4..."
+curl -fsSL https://www.pgadmin.org/static/packages_pgadmin_org.pub 2>pgadmin_gpg_error.log | sudo gpg --dearmor -o /usr/share/keyrings/pgadmin-archive-keyring.gpg || log_error "Failed to add pgAdmin GPG key (Exit code: $?)" "$(cat pgadmin_gpg_error.log)"
+rm -f pgadmin_gpg_error.log
+echo "deb [signed-by=/usr/share/keyrings/pgadmin-archive-keyring.gpg] https://ftp.postgresql.org/pub/pgadmin/pgadmin4/apt/$(lsb_release -cs) pgadmin4 main" 2>pgadmin_repo_error.log | sudo tee /etc/apt/sources.list.d/pgadmin4.list || log_error "Failed to add pgAdmin repository (Exit code: $?)" "$(cat pgadmin_repo_error.log)"
+rm -f pgadmin_repo_error.log
+sudo apt update 2>pgadmin_apt_update_error.log && echo "pgAdmin repository updated successfully." || log_error "Failed to update pgAdmin repository (Exit code: $?)" "$(cat pgadmin_apt_update_error.log)"
+rm -f pgadmin_apt_update_error.log
+sudo apt install -y pgadmin4-desktop 2>pgadmin_install_error.log && echo "pgAdmin 4 desktop version installed successfully." || log_error "Failed to install pgAdmin 4 (Exit code: $?)" "$(cat pgadmin_install_error.log)"
+rm -f pgadmin_install_error.log
+
 # Install Visual Studio Code
 echo "Installing Visual Studio Code..."
 wget -qO- https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor > packages.microsoft.gpg || log_error "Failed to download Microsoft GPG key"
