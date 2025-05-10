@@ -1,12 +1,11 @@
 import sys
 import os
-
+from pathlib import Path
 # Add the absolute path to the parent directory
 sys.path.append(str(Path.home() / 'client_etl_workflow'))
 import threading
 import requests
 import re
-from pathlib import Path
 import pandas as pd
 from datetime import datetime
 import time

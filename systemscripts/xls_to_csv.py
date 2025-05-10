@@ -6,9 +6,9 @@ import uuid
 import time
 import pandas as pd
 from datetime import datetime
-from systemscripts.user_utils import get_username
-from systemscripts.log_utils import log_message
-from systemscripts.directory_management import ensure_directory_exists, ROOT_DIR
+from user_utils import get_username
+from log_utils import log_message
+from directory_management import ensure_directory_exists, ROOT_DIR
 
 # Add the root directory to sys.path
 sys.path.append(str(Path.home() / 'client_etl_workflow'))
