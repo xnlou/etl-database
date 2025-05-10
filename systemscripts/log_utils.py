@@ -4,6 +4,8 @@ import time
 from datetime import datetime
 import threading
 import os
+import psycopg2
+from psycopg2.extras import execute_values
 
 # Global counter and lock for log_id
 _log_id_counter = 0
@@ -11,8 +13,16 @@ _log_id_lock = threading.Lock()
 _last_log_time = time.time()
 _log_time_lock = threading.Lock()
 
-def log_message(log_file, process_type, message, **kwargs):
-    """Log a message to CSV and TXT files with configurable fields."""
+# Database connection parameters
+DB_PARAMS = {
+    "dbname": "Feeds",
+    "user": "yostfundsadmin",
+    "password": "etlserver2025!",
+    "host": "localhost"
+}
+
+def log_message(log_file, process_type, message, use_db=True, **kwargs):
+    """Log a message to CSV, TXT, and optionally PostgreSQL with configurable fields."""
     global _log_id_counter, _last_log_time
     current_time = time.time()
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -78,9 +88,36 @@ def log_message(log_file, process_type, message, **kwargs):
         f"{log_entry['run_uuid']} | {log_entry['timestamp']} | {log_entry['process_type']} | {log_entry['message']}\n"
     )
     with open(txt_file, "a") as f:
-        # Write header if file is empty
         if f.tell() == 0:
             f.write("run_uuid | timestamp | process_type | message\n")
             f.write("------------------------------------|---------------------|------------------|--------------------------------\n")
         f.write(txt_entry)
     os.chmod(txt_file, 0o660)
+    
+    # Write to PostgreSQL if use_db is True
+    if use_db:
+        try:
+            with psycopg2.connect(**DB_PARAMS) as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        INSERT INTO dba.tLogEntry (
+                            run_uuid, timestamp, process_type, stepcounter, 
+                            user_name, step_runtime, total_runtime, message
+                        )
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    """, (
+                        run_uuid,
+                        timestamp,
+                        process_type,
+                        stepcounter,
+                        user,
+                        float(log_entry["step_runtime"]),
+                        float(log_entry["total_runtime"]),
+                        message
+                    ))
+                    conn.commit()
+        except psycopg2.Error as e:
+            # Log database error to TXT file as fallback
+            with open(txt_file, "a") as f:
+                f.write(f"{run_uuid} | {timestamp} | Error | Failed to log to PostgreSQL: {str(e)}\n")
+            os.chmod(txt_file, 0o660)
