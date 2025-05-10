@@ -27,6 +27,15 @@ sudo apt update || log_error "Failed to update package lists"
 echo "Installing Caffeine..."
 sudo apt install -y caffeine || log_error "Failed to install Caffeine"
 
+# Install Visual Studio Code
+echo "Installing Visual Studio Code..."
+wget -qO- https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor > packages.microsoft.gpg || log_error "Failed to download Microsoft GPG key"
+sudo install -o root -g root -m 644 packages.microsoft.gpg /etc/apt/trusted.gpg.d/ || log_error "Failed to install Microsoft GPG key"
+sudo sh -c 'echo "deb [arch=amd64,arm64,armhf signed-by=/etc/apt/trusted.gpg.d/packages.microsoft.gpg] https://packages.microsoft.com/repos/code stable main" > /etc/apt/sources.list.d/vscode.list' || log_error "Failed to add VS Code repository"
+rm -f packages.microsoft.gpg
+sudo apt update && echo "VS Code repository updated." || log_error "Failed to update VS Code repository"
+sudo apt install -y code && echo "VS Code installed." || log_error "Failed to install Visual Studio Code"
+
 # Install AnyDesk
 echo "Installing AnyDesk..."
 wget -qO - https://keys.anydesk.com/repos/DEB-GPG-KEY | sudo apt-key add - || log_error "Failed to add AnyDesk GPG key"
