@@ -1,5 +1,10 @@
 venv/
-archive/
-logs/
-file_watcher/
-*.pyc
+logs/*.csv
+logs/*.txt
+logs/*.log
+file_watcher/*.csv
+file_watcher/*.xls
+file_watcher/file_watcher_temp/*.csv
+file_watcher/file_watcher_temp/*.xls
+systemscripts/*.pyc
+systemscripts/__pycache__/
