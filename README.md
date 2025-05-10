@@ -117,6 +117,7 @@ To set up the ETL server, run the scripts in the following order. Ensure each sc
 - **Cron Job Not Running**: Check `/etc/cron.d/etl_jobs` for the correct script path and ensure the cron service is active (`sudo systemctl status cron`).
 - **Server Goes to Sleep**: If the system still enters sleep mode, verify the changes made by `disable_power_saving.sh` in `/etc/default/grub` and `/etc/systemd/logind.conf`. Reboot to ensure GRUB changes take effect.
 
+
 ## Future Enhancements
 - Add monitoring with tools like Prometheus or Nagios to track system and ETL job performance.
 - Implement email notifications for script failures using `smtplib` in Python.
