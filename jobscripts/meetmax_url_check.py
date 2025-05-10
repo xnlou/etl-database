@@ -22,8 +22,8 @@ from systemscripts.directory_management import LOG_DIR, FILE_WATCHER_DIR, ensure
 BASE_URL = "https://www.meetmax.com/sched/event_{}/"
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 MAX_RETRIES = 3  # Reduced to avoid excessive retries on rate limits
-INITIAL_DELAY = 10.0  # Increased for longer retry backoff
-TASK_SUBMISSION_DELAY = 3.0  # Enforce delay between task submissions
+INITIAL_DELAY = 15.0  # Increased for longer retry backoff
+TASK_SUBMISSION_DELAY = 5.0  # Enforce delay between task submissions
 PERIODIC_INTERVAL = 300  # Increased for longer runs
 
 # Define directories
