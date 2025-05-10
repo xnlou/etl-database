@@ -35,7 +35,7 @@ ensure_directory_exists(FILE_WATCHER_DIR)
 ensure_directory_exists(FILE_WATCHER_TEMP_DIR)
 
 # Define Event IDs range
-event_ids = range(92567, 120000)
+event_ids = range(119179, 119184)
 
 # Global lock and variables
 results_lock = threading.Lock()

@@ -1,0 +1,139 @@
+import sys
+import os
+# Add the absolute path to the parent directory
+sys.path.append('/home/yostfundsadmintest1/client_etl_workflow')
+import time
+import uuid
+import requests
+import pandas as pd
+from datetime import datetime
+from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor
+from systemscripts.user_utils import get_username
+from systemscripts.log_utils import log_message
+from systemscripts.directory_management import FILE_WATCHER_DIR, LOG_DIR, ensure_directory_exists
+
+# Define constants
+INPUT_CSV = Path("/home/yostfundsadmintest1/client_etl_workflow/file_watcher/20250509T225225_MeetMaxURLCheck.csv")
+USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+MAX_RETRIES = 3
+INITIAL_DELAY = 5.0
+TASK_SUBMISSION_DELAY = 1.0
+
+# Ensure directories exist
+ensure_directory_exists(FILE_WATCHER_DIR)
+ensure_directory_exists(LOG_DIR)
+
+def download_file(event_id, download_url, log_file, run_uuid, user, script_start_time, timestamp):
+    """Download an XLS file."""
+    result = {
+        "EventID": event_id,
+        "DownloadURL": download_url,
+        "Status": "Failed"
+    }
+    
+    log_message(log_file, "Download", f"Starting download for EventID {event_id} from {download_url}", 
+                run_uuid=run_uuid, stepcounter=f"download_{event_id}", user=user, script_start_time=script_start_time)
+    
+    session = requests.Session()
+    session.headers.update({
+        "User-Agent": USER_AGENT,
+        "Accept": "application/vnd.ms-excel,application/octet-stream",
+        "Accept-Encoding": "gzip, deflate",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Connection": "keep-alive"
+    })
+    
+    output_file = FILE_WATCHER_DIR / f"{timestamp}_MeetMax_{event_id}.xls"
+    
+    try:
+        # Download with retry logic
+        for attempt in range(MAX_RETRIES):
+            try:
+                response = session.get(download_url, timeout=10)
+                response.raise_for_status()
+                with open(output_file, "wb") as f:
+                    f.write(response.content)
+                os.chmod(output_file, 0o660)
+                log_message(log_file, "Download", f"Downloaded EventID {event_id} to {output_file}", 
+                            run_uuid=run_uuid, stepcounter=f"download_{event_id}", user=user, script_start_time=script_start_time)
+                result["Status"] = "Success"
+                return result
+            except (requests.RequestException, requests.HTTPError) as e:
+                if attempt == MAX_RETRIES - 1:
+                    log_message(log_file, "Error", f"Failed to download EventID {event_id} after {MAX_RETRIES} attempts: {str(e)}", 
+                                run_uuid=run_uuid, stepcounter=f"download_{event_id}", user=user, script_start_time=script_start_time)
+                    return result
+                time.sleep(INITIAL_DELAY * (2 ** attempt))
+    
+    except Exception as e:
+        log_message(log_file, "Error", f"Unexpected error processing EventID {event_id}: {str(e)}", 
+                    run_uuid=run_uuid, stepcounter=f"download_{event_id}", user=user, script_start_time=script_start_time)
+        return result
+
+def meetmax_url_download():
+    """Download XLS files from MeetMax URLs."""
+    script_start_time = time.time()
+    run_uuid = str(uuid.uuid4())
+    user = get_username()
+    timestamp = datetime.now().strftime("%Y%m%dT%H%M%S")
+    log_file = LOG_DIR / f"meetmax_url_download_{timestamp}"
+    results_file = FILE_WATCHER_DIR / f"{timestamp}_meetmax_url_download_results.csv"
+    
+    log_message(log_file, "Initialization", f"Script started at {timestamp}", 
+                run_uuid=run_uuid, stepcounter="Initialization_0", user=user, script_start_time=script_start_time)
+    log_message(log_file, "Initialization", f"Input CSV path: {INPUT_CSV}", 
+                run_uuid=run_uuid, stepcounter="Initialization_1", user=user, script_start_time=script_start_time)
+    log_message(log_file, "Initialization", f"Results CSV path: {results_file}", 
+                run_uuid=run_uuid, stepcounter="Initialization_2", user=user, script_start_time=script_start_time)
+    
+    # Read input CSV
+    try:
+        df = pd.read_csv(INPUT_CSV)
+        log_message(log_file, "Initialization", f"Read {len(df)} rows from {INPUT_CSV}", 
+                    run_uuid=run_uuid, stepcounter="Initialization_3", user=user, script_start_time=script_start_time)
+    except Exception as e:
+        log_message(log_file, "Error", f"Failed to read CSV {INPUT_CSV}: {str(e)}", 
+                    run_uuid=run_uuid, stepcounter="Initialization_4", user=user, script_start_time=script_start_time)
+        return
+    
+    # Filter downloadable events
+    downloadable = df[(df["IsDownloadable"] == 1) & (df["DownloadLink"].notna())]
+    log_message(log_file, "Initialization", f"Found {len(downloadable)} downloadable events", 
+                run_uuid=run_uuid, stepcounter="Initialization_5", user=user, script_start_time=script_start_time)
+    
+    results = []
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = []
+        for _, row in downloadable.iterrows():
+            event_id = row["EventID"]
+            download_url = row["DownloadLink"]
+            futures.append(executor.submit(download_file, event_id, download_url, log_file, run_uuid, user, script_start_time, timestamp))
+            time.sleep(TASK_SUBMISSION_DELAY)
+        
+        for future in futures:
+            result = future.result()
+            results.append(result)
+            log_message(log_file, "Processing", f"Completed processing EventID {result['EventID']}, Status: {result['Status']}", 
+                        run_uuid=run_uuid, stepcounter=f"result_{result['EventID']}", user=user, script_start_time=script_start_time)
+    
+    # Save results
+    if results:
+        results_df = pd.DataFrame(results)
+        try:
+            results_df.to_csv(results_file, index=False, quoting=csv.QUOTE_NONNUMERIC, quotechar='"')
+            os.chmod(results_file, 0o660)
+            log_message(log_file, "FinalSave", f"Saved {len(results)} rows to {results_file}", 
+                        run_uuid=run_uuid, stepcounter="FinalSave_0", user=user, script_start_time=script_start_time)
+        except Exception as e:
+            log_message(log_file, "Error", f"Failed to save results to {results_file}: {str(e)}", 
+                        run_uuid=run_uuid, stepcounter="FinalSave_1", user=user, script_start_time=script_start_time)
+    else:
+        log_message(log_file, "FinalSave", "No results to save", 
+                    run_uuid=run_uuid, stepcounter="FinalSave_2", user=user, script_start_time=script_start_time)
+    
+    log_message(log_file, "Finalization", f"Script completed, processed {len(results)} events", 
+                run_uuid=run_uuid, stepcounter="Finalization_0", user=user, script_start_time=script_start_time)
+
+if __name__ == "__main__":
+    meetmax_url_download()
