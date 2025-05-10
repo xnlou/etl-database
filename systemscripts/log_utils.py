@@ -50,7 +50,7 @@ def log_message(log_file, process_type, message, **kwargs):
         "message": message
     }
     
-    # Define column order
+    # Define column order for CSV
     column_order = [
         "log_id",
         "timestamp",
@@ -75,16 +75,12 @@ def log_message(log_file, process_type, message, **kwargs):
     # Write to TXT
     txt_file = f"{log_file}.txt"
     txt_entry = (
-        f"Log ID: {log_entry['log_id']}\t"
-        f"Timestamp: {log_entry['timestamp']}\t"
-        f"Run UUID: {log_entry['run_uuid']}\t"
-        f"Process Type: {log_entry['process_type']}\t"
-        f"Stepcounter: {log_entry['stepcounter']}\t"
-        f"User: {log_entry['user']}\t"
-        f"Step Runtime: {log_entry['step_runtime']}\t"
-        f"Total Runtime: {log_entry['total_runtime']}\t"
-        f"Message: {log_entry['message']}\n"
+        f"{log_entry['run_uuid']} | {log_entry['timestamp']} | {log_entry['process_type']} | {log_entry['message']}\n"
     )
     with open(txt_file, "a") as f:
+        # Write header if file is empty
+        if f.tell() == 0:
+            f.write("run_uuid | timestamp | process_type | message\n")
+            f.write("------------------------------------|---------------------|------------------|--------------------------------\n")
         f.write(txt_entry)
     os.chmod(txt_file, 0o660)
