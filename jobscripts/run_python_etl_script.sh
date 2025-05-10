@@ -3,7 +3,7 @@
 set -e
 
 # Define paths
-ROOT_DIR="/home/yostfundsadmintest1/client_etl_workflow"
+ROOT_DIR="/home/$(whoami)/client_etl_workflow"
 VENV_DIR="$ROOT_DIR/venv"
 JOB_SCRIPTS_DIR="$ROOT_DIR/jobscripts"
 SYSTEM_SCRIPTS_DIR="$ROOT_DIR/systemscripts"

@@ -1,7 +1,7 @@
 import sys
 import os
 # Add the absolute path to the parent directory
-sys.path.append('/home/yostfundsadmintest1/client_etl_workflow')
+sys.path.append(str(Path.home() / 'client_etl_workflow'))
 import threading
 import requests
 import re

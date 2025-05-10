@@ -1,19 +1,20 @@
 import sys
 import os
-# Add the absolute path to the parent directory to locate systemscripts
-sys.path.append('/home/yostfundsadmintest1/client_etl_workflow')
+from pathlib import Path
 import csv
 import uuid
 import time
 import pandas as pd
 from datetime import datetime
-from pathlib import Path
 from systemscripts.user_utils import get_username
 from systemscripts.log_utils import log_message
-from systemscripts.directory_management import ensure_directory_exists
+from systemscripts.directory_management import ensure_directory_exists, ROOT_DIR
+
+# Add the root directory to sys.path
+sys.path.append(str(Path.home() / 'client_etl_workflow'))
 
 # Configuration
-LOG_DIR = Path('/home/yostfundsadmintest1/client_etl_workflow/logs')
+LOG_DIR = ROOT_DIR / 'logs'
 # Directory for log files (CSV and TXT).
 
 def xls_to_csv(input_filepath):
