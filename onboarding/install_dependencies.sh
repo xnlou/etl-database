@@ -65,7 +65,7 @@ if ! systemctl is-active cron >/dev/null 2>&1; then
 fi
 sudo systemctl enable cron && echo "Cron service enabled." || log_error "Failed to enable cron"
 
-# Ensure PostgreSQL is running and enabled
+# Ensure PostgreSQL is running and enabled at boot
 echo "Ensuring PostgreSQL is running and enabled at boot..."
 PG_VERSION=$(ls /etc/postgresql | grep -E '^[0-9]+$' | sort -nr | head -1)
 sudo systemctl restart postgresql && sudo systemctl enable postgresql && echo "PostgreSQL restarted and enabled." || log_error "Failed to configure PostgreSQL service"
@@ -97,7 +97,7 @@ echo "Installing build dependencies..."
 "$PROJECT_DIR/venv/bin/pip" install setuptools wheel && echo "Build dependencies installed." || log_error "Failed to install build dependencies"
 echo "Installing Python dependencies..."
 "$PROJECT_DIR/venv/bin/pip" install numpy==1.26.4 pandas==1.5.3 requests==2.28.1 psycopg2-binary==2.9.5 matplotlib==3.7.1 \
-    scrapy==2.11.2 beautifulsoup4==4.12.3 openpyxl==3.1.2 aiohttp==3.9.5 tqdm==4.66.5 && echo "Python dependencies installed." || log_error "Failed to install Python dependencies"
+    scrapy==2.11.2 beautifulsoup4==4.12.3 openpyxl==3.1.2 aiohttp==3.9.5 tqdm==4.66.5 xlrd==2.0.1 && echo "Python dependencies installed." || log_error "Failed to install Python dependencies"
 
 # Set permissions for virtual environment
 echo "Setting permissions for virtual environment..."
