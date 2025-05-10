@@ -1,0 +1,96 @@
+import sys
+import os
+# Add the absolute path to the parent directory to locate systemscripts
+sys.path.append('/home/yostfundsadmintest1/client_etl_workflow')
+import csv
+import uuid
+import time
+import pandas as pd
+from datetime import datetime
+from pathlib import Path
+from systemscripts.user_utils import get_username
+from systemscripts.log_utils import log_message
+from systemscripts.directory_management import ensure_directory_exists
+
+# Configuration
+LOG_DIR = Path('/home/yostfundsadmintest1/client_etl_workflow/logs')
+# Directory for log files (CSV and TXT).
+
+def xls_to_csv(input_filepath):
+    """Convert an XLS/XLSX file to CSV and save it in the same directory."""
+    script_start_time = time.time()
+    run_uuid = str(uuid.uuid4())
+    user = get_username()
+    timestamp = datetime.now().strftime("%Y%m%dT%H%M%S")
+    log_file = LOG_DIR / f"xls_to_csv_{timestamp}"
+    
+    # Ensure log directory exists
+    ensure_directory_exists(LOG_DIR)
+    
+    # Log initialization
+    log_message(log_file, "Initialization", f"Script started at {timestamp}", 
+                run_uuid=run_uuid, stepcounter="Initialization_0", user=user, script_start_time=script_start_time)
+    log_message(log_file, "Initialization", f"Input XLS filepath: {input_filepath}", 
+                run_uuid=run_uuid, stepcounter="Initialization_1", user=user, script_start_time=script_start_time)
+    
+    # Validate input filepath
+    input_path = Path(input_filepath)
+    if not input_path.exists():
+        log_message(log_file, "Error", f"Input file does not exist: {input_filepath}", 
+                    run_uuid=run_uuid, stepcounter="Validation_0", user=user, script_start_time=script_start_time)
+        return
+    if not input_path.suffix.lower() in ('.xls', '.xlsx'):
+        log_message(log_file, "Error", f"Input file is not an XLS/XLSX file: {input_filepath}", 
+                    run_uuid=run_uuid, stepcounter="Validation_1", user=user, script_start_time=script_start_time)
+        return
+    
+    # Define output CSV filepath (same directory, .csv extension)
+    output_filepath = input_path.with_suffix('.csv')
+    
+    log_message(log_file, "Processing", f"Converting {input_filepath} to {output_filepath}", 
+                run_uuid=run_uuid, stepcounter="Conversion_0", user=user, script_start_time=script_start_time)
+    
+    # Convert XLS to CSV
+    try:
+        # Try openpyxl for .xlsx or modern formats
+        engine = "openpyxl"
+        try:
+            df = pd.read_excel(input_path, engine=engine)
+            log_message(log_file, "Conversion", f"Using engine: {engine}", 
+                        run_uuid=run_uuid, stepcounter="Conversion_1", user=user, script_start_time=script_start_time)
+        except Exception as e:
+            # Fall back to xlrd for legacy .xls if available
+            engine = "xlrd"
+            try:
+                df = pd.read_excel(input_path, engine=engine)
+                log_message(log_file, "Conversion", f"Using engine: {engine}", 
+                            run_uuid=run_uuid, stepcounter="Conversion_1", user=user, script_start_time=script_start_time)
+            except ImportError:
+                log_message(log_file, "Error", f"Failed to convert {input_filepath}: xlrd not installed for legacy .xls support", 
+                            run_uuid=run_uuid, stepcounter="Conversion_2", user=user, script_start_time=script_start_time)
+                return
+            except Exception as e:
+                log_message(log_file, "Error", f"Failed to convert {input_filepath}: {str(e)}", 
+                            run_uuid=run_uuid, stepcounter="Conversion_2", user=user, script_start_time=script_start_time)
+                return
+        
+        df.to_csv(output_filepath, index=False, quoting=csv.QUOTE_NONNUMERIC, quotechar='"')
+        os.chmod(output_filepath, 0o660)
+        os.chown(output_filepath, os.getuid(), os.getgrnam('etl_group').gr_gid)
+        log_message(log_file, "Conversion", f"Successfully converted {input_filepath} to {output_filepath}", 
+                    run_uuid=run_uuid, stepcounter="Conversion_3", user=user, script_start_time=script_start_time)
+    
+    except Exception as e:
+        log_message(log_file, "Error", f"Failed to convert {input_filepath}: {str(e)}", 
+                    run_uuid=run_uuid, stepcounter="Conversion_2", user=user, script_start_time=script_start_time)
+        return
+    
+    log_message(log_file, "Finalization", f"Script completed for {input_filepath}", 
+                run_uuid=run_uuid, stepcounter="Finalization_0", user=user, script_start_time=script_start_time)
+
+if __name__ == "__main__":
+    if len(sys.argv) != 2:
+        print("Usage: python xls_to_csv.py <input_filepath>")
+        sys.exit(1)
+    input_filepath = sys.argv[1]
+    xls_to_csv(input_filepath)
