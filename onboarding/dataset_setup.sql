@@ -163,30 +163,30 @@ BEGIN
 END $$;
 
 -- Insert initial data for lookup tables only if they are empty
-DO $$
-BEGIN
-    IF (SELECT COUNT(*) FROM dba.tDataSetType) = 0 THEN
-        INSERT INTO dba.tDataSetType (TypeName, Description) VALUES
-            ('MeetMax', 'Datasets from MeetMax event scraping'),
-            ('ClientUpload', 'Datasets uploaded by clients via SFTP');
-    END IF;
-END $$;
+-- DO $$
+-- BEGIN
+--     IF (SELECT COUNT(*) FROM dba.tDataSetType) = 0 THEN
+--         INSERT INTO dba.tDataSetType (TypeName, Description) VALUES
+--             ('MeetMax', 'Datasets from MeetMax event scraping'),
+--             ('ClientUpload', 'Datasets uploaded by clients via SFTP');
+--     END IF;
+-- END $$;
 
-DO $$
-BEGIN
-    IF (SELECT COUNT(*) FROM dba.tDataSource) = 0 THEN
-        INSERT INTO dba.tDataSource (SourceName, Description) VALUES
-            ('MeetMaxWebsite', 'Data scraped from MeetMax website'),
-            ('SFTPUpload', 'Data uploaded by clients via SFTP');
-    END IF;
-END $$;
+-- DO $$
+-- BEGIN
+--     IF (SELECT COUNT(*) FROM dba.tDataSource) = 0 THEN
+--         INSERT INTO dba.tDataSource (SourceName, Description) VALUES
+--             ('MeetMaxWebsite', 'Data scraped from MeetMax website'),
+--             ('SFTPUpload', 'Data uploaded by clients via SFTP');
+--     END IF;
+-- END $$;
 
-DO $$
-BEGIN
-    IF (SELECT COUNT(*) FROM dba.tDataStatus) = 0 THEN
-        INSERT INTO dba.tDataStatus (StatusName, Description) VALUES
-            ('Active', 'Dataset is currently active and in use'),
-            ('Inactive', 'Dataset is no longer active but retained for history'),
-            ('Deleted', 'Dataset has been marked for deletion');
-    END IF;
-END $$;
+-- DO $$
+-- BEGIN
+--     IF (SELECT COUNT(*) FROM dba.tDataStatus) = 0 THEN
+--         INSERT INTO dba.tDataStatus (StatusName, Description) VALUES
+--             ('Active', 'Dataset is currently active and in use'),
+--             ('Inactive', 'Dataset is no longer active but retained for history'),
+--             ('Deleted', 'Dataset has been marked for deletion');
+--     END IF;
+-- END $$;
