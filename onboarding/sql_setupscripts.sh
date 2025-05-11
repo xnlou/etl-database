@@ -1,12 +1,12 @@
 #!/bin/bash
-# Description: Executes specific SQL scripts in the systemscripts directory against the Feeds database in a defined order.
+# Description: Executes specific SQL scripts in the onboarding directory against the Feeds database in a defined order.
 set -e  # Exit immediately if a command exits with a non-zero status
 
 # Define paths
 CURRENT_USER=$(whoami)
 HOME_DIR="/home/$CURRENT_USER"
 PROJECT_DIR="$HOME_DIR/client_etl_workflow"
-SYSTEM_SCRIPTS_DIR="$PROJECT_DIR/systemscripts"
+ONBOARDING_DIR="$PROJECT_DIR/onboarding"
 LOG_DIR="$PROJECT_DIR/logs"
 LOG_FILE="$LOG_DIR/sql_setupscripts_$(date +%Y%m%dT%H%M%S).log"
 
@@ -35,9 +35,9 @@ chown "$CURRENT_USER":etl_group "$LOG_DIR"
 exec > >(tee -a "$LOG_FILE") 2>&1
 echo "=== SQL Setup Scripts Execution Started at $(date) by $CURRENT_USER ==="
 
-# Check if systemscripts directory exists
-if [ ! -d "$SYSTEM_SCRIPTS_DIR" ]; then
-    echo "[ERROR] $(date): System scripts directory $SYSTEM_SCRIPTS_DIR does not exist."
+# Check if onboarding directory exists
+if [ ! -d "$ONBOARDING_DIR" ]; then
+    echo "[ERROR] $(date): Onboarding directory $ONBOARDING_DIR does not exist."
     exit 1
 fi
 
@@ -46,7 +46,7 @@ export PGPASSWORD="etlserver2025!"
 
 # Execute each SQL script in the specified order
 for SCRIPT in "${SQL_SCRIPTS[@]}"; do
-    SQL_FILE="$SYSTEM_SCRIPTS_DIR/$SCRIPT"
+    SQL_FILE="$ONBOARDING_DIR/$SCRIPT"
     # Check if the SQL file exists
     if [ ! -f "$SQL_FILE" ]; then
         echo "[ERROR] $(date): SQL file $SQL_FILE does not exist."
