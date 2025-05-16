@@ -1,6 +1,6 @@
 -- Create table to log table and index usage
 CREATE TABLE dba.tTableIndexStats (
-    ,statId SERIAL PRIMARY KEY
+    statId SERIAL PRIMARY KEY
     ,snapshotTime TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
     ,schemaName VARCHAR(100)
     ,tableName VARCHAR(100)
@@ -29,7 +29,7 @@ AS $$
 BEGIN
     -- Capture table stats
     INSERT INTO dba.tTableIndexStats (
-        ,snapshotTime
+        snapshotTime
         ,schemaName
         ,tableName
         ,indexName
@@ -42,7 +42,7 @@ BEGIN
         ,totalSize
     )
     SELECT 
-        ,CURRENT_TIMESTAMP
+        CURRENT_TIMESTAMP
         ,schemaname
         ,relname
         ,NULL AS indexName
@@ -57,7 +57,7 @@ BEGIN
     
     -- Capture index stats
     INSERT INTO dba.tTableIndexStats (
-        ,snapshotTime
+        snapshotTime
         ,schemaName
         ,tableName
         ,indexName
@@ -70,7 +70,7 @@ BEGIN
         ,totalSize
     )
     SELECT 
-        ,CURRENT_TIMESTAMP
+        CURRENT_TIMESTAMP
         ,s.schemaname
         ,s.relname AS tableName
         ,s.indexrelname AS indexName
@@ -89,7 +89,7 @@ BEGIN
 EXCEPTION
     WHEN OTHERS THEN
         INSERT INTO dba.tLogEntry (
-            ,runUuid
+            runUuid
             ,timestamp
             ,processType
             ,stepcounter
@@ -99,7 +99,7 @@ EXCEPTION
             ,message
         )
         VALUES (
-            ,gen_random_uuid()
+            gen_random_uuid()
             ,CURRENT_TIMESTAMP
             ,'StatsCapture'
             ,'error'
