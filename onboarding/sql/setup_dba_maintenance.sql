@@ -7,12 +7,6 @@ BEGIN
     END IF;
 END $$;
 
--- Grant permissions to yostfundsadmin
-DO $$
-BEGIN
-    EXECUTE 'GRANT ALL ON SCHEMA dba TO yostfundsadmin';
-END $$;
-
 -- Create tDDLLogs table if it doesn't exist
 DO $$
 BEGIN
@@ -25,8 +19,8 @@ BEGIN
               logId SERIAL PRIMARY KEY
             , eventTime TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
             , eventType TEXT NOT NULL
-            , schemaName TEXT NOT NULL
-            , objectName TEXT NOT NULL
+            , schemaName TEXT NULL
+            , objectName TEXT NULL
             , objectType TEXT NOT NULL
             , sqlStatement TEXT NOT NULL
             , userName VARCHAR(50) NOT NULL DEFAULT CURRENT_USER
@@ -43,49 +37,6 @@ BEGIN
         COMMENT ON COLUMN dba.tDDLLogs.userName IS 'User who performed the DDL operation.';
 
         GRANT ALL ON TABLE dba.tDDLLogs TO yostfundsadmin;
-    END IF;
-END $$;
-
--- Create or replace function to log DDL changes
-CREATE OR REPLACE FUNCTION dba.fLogDDLChanges()
-RETURNS EVENT_TRIGGER AS $$
-DECLARE
-    r RECORD;
-    changeTime TIMESTAMP := CURRENT_TIMESTAMP;
-BEGIN
-    FOR r IN (SELECT * FROM pg_event_trigger_ddl_commands())
-    LOOP
-        INSERT INTO dba.tDDLLogs (
-              eventTime
-            , eventType
-            , schemaName
-            , objectName
-            , objectType
-            , sqlStatement
-        )
-        VALUES (
-              changeTime
-            , r.command_tag
-            , r.schema_name
-            , r.object_identity
-            , r.object_type
-            , r.command_tag
-        );
-    END LOOP;
-END;
-$$ LANGUAGE plpgsql;
-
--- Create event trigger if it doesn't exist
-DO $$
-BEGIN
-    IF NOT EXISTS (
-        SELECT 1
-        FROM pg_event_trigger
-        WHERE evtname = 'logddl'
-    ) THEN
-        CREATE EVENT TRIGGER logddl
-        ON ddl_command_end
-        EXECUTE FUNCTION dba.fLogDDLChanges();
     END IF;
 END $$;
 
@@ -125,4 +76,53 @@ BEGIN
         CREATE INDEX idx_tlogentry_timestamp ON dba.tLogEntry (timestamp);
         CREATE INDEX idx_tlogentry_run_uuid ON dba.tLogEntry (run_uuid);
     END IF;
+END $$;
+
+-- Create or replace function to log DDL changes
+CREATE OR REPLACE FUNCTION dba.fLogDDLChanges()
+RETURNS EVENT_TRIGGER AS $$
+DECLARE
+    r RECORD;
+    changeTime TIMESTAMP := CURRENT_TIMESTAMP;
+BEGIN
+    FOR r IN (SELECT * FROM pg_event_trigger_ddl_commands())
+    LOOP
+        INSERT INTO dba.tDDLLogs (
+              eventTime
+            , eventType
+            , schemaName
+            , objectName
+            , objectType
+            , sqlStatement
+        )
+        VALUES (
+              changeTime
+            , r.command_tag
+            , COALESCE(r.schema_name, 'dba') -- Handle NULL schema_name
+            , r.object_identity
+            , r.object_type
+            , r.command_tag
+        );
+    END LOOP;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Create event trigger if it doesn't exist
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_event_trigger
+        WHERE evtname = 'logddl'
+    ) THEN
+        CREATE EVENT TRIGGER logddl
+        ON ddl_command_end
+        EXECUTE FUNCTION dba.fLogDDLChanges();
+    END IF;
+END $$;
+
+-- Grant permissions to yostfundsadmin
+DO $$
+BEGIN
+    EXECUTE 'GRANT ALL ON SCHEMA dba TO yostfundsadmin';
 END $$;

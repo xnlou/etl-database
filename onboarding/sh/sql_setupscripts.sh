@@ -7,7 +7,7 @@ set -e  # Exit immediately if a command exits with a non-zero status
 CURRENT_USER=$(whoami)
 HOME_DIR="/home/$CURRENT_USER"
 PROJECT_DIR="$HOME_DIR/client_etl_workflow"
-ONBOARDING_DIR="$PROJECT_DIR/onboarding"
+ONBOARDING_DIR="$PROJECT_DIR/onboarding/sql"
 LOG_DIR="$PROJECT_DIR/logs"
 LOG_FILE="$LOG_DIR/sql_setupscripts_$(date +%Y%m%dT%H%M%S).log"
 
