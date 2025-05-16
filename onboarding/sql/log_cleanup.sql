@@ -11,7 +11,7 @@ BEGIN
     WHERE changeTime < CURRENT_DATE - INTERVAL '1 day' * thresholdDays;
     GET DIAGNOSTICS deletedRows = ROW_COUNT;
     INSERT INTO dba.tMaintenanceLog (
-        ,maintenanceTime
+        maintenanceTime
         ,operation
         ,tableName
         ,userName
@@ -19,7 +19,7 @@ BEGIN
         ,details
     )
     VALUES (
-        ,startTime
+        startTime
         ,'PURGE'
         ,'tDDLLogs'
         ,CURRENT_USER
@@ -32,7 +32,7 @@ BEGIN
     WHERE timestamp < CURRENT_DATE - INTERVAL '1 day' * thresholdDays;
     GET DIAGNOSTICS deletedRows = ROW_COUNT;
     INSERT INTO dba.tMaintenanceLog (
-        ,maintenanceTime
+        maintenanceTime
         ,operation
         ,tableName
         ,userName
@@ -40,7 +40,7 @@ BEGIN
         ,details
     )
     VALUES (
-        ,startTime
+        startTime
         ,'PURGE'
         ,'tLogEntry'
         ,CURRENT_USER
@@ -53,7 +53,7 @@ BEGIN
     WHERE maintenanceTime < CURRENT_DATE - INTERVAL '1 day' * thresholdDays;
     GET DIAGNOSTICS deletedRows = ROW_COUNT;
     INSERT INTO dba.tMaintenanceLog (
-        ,maintenanceTime
+        maintenanceTime
         ,operation
         ,tableName
         ,userName
@@ -61,7 +61,7 @@ BEGIN
         ,details
     )
     VALUES (
-        ,startTime
+        startTime
         ,'PURGE'
         ,'tMaintenanceLog'
         ,CURRENT_USER
@@ -74,7 +74,7 @@ BEGIN
     WHERE snapshotTime < CURRENT_DATE - INTERVAL '1 day' * thresholdDays;
     GET DIAGNOSTICS deletedRows = ROW_COUNT;
     INSERT INTO dba.tMaintenanceLog (
-        ,maintenanceTime
+        maintenanceTime
         ,operation
         ,tableName
         ,userName
@@ -82,7 +82,7 @@ BEGIN
         ,details
     )
     VALUES (
-        ,startTime
+        startTime
         ,'PURGE'
         ,'tTableIndexStats'
         ,CURRENT_USER
@@ -94,7 +94,7 @@ BEGIN
 EXCEPTION
     WHEN OTHERS THEN
         INSERT INTO dba.tMaintenanceLog (
-            ,maintenanceTime
+            maintenanceTime
             ,operation
             ,tableName
             ,userName
@@ -102,7 +102,7 @@ EXCEPTION
             ,details
         )
         VALUES (
-            ,startTime
+            startTime
             ,'PURGE'
             ,NULL
             ,CURRENT_USER
