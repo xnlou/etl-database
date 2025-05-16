@@ -8,7 +8,7 @@ DECLARE
 BEGIN
     FOR r IN (
         SELECT
-            ,pid
+            pid
             ,usename
             ,application_name
             ,state
@@ -22,7 +22,7 @@ BEGIN
     )
     LOOP
         INSERT INTO dba.tLogEntry (
-            ,runUuid
+            runUuid
             ,timestamp
             ,processType
             ,stepcounter
@@ -32,7 +32,7 @@ BEGIN
             ,message
         )
         VALUES (
-            ,runUuid
+            runUuid
             ,CURRENT_TIMESTAMP
             ,'QueryMonitor'
             ,'pid_' || r.pid
@@ -48,7 +48,7 @@ BEGIN
 EXCEPTION
     WHEN OTHERS THEN
         INSERT INTO dba.tLogEntry (
-            ,runUuid
+            runUuid
             ,timestamp
             ,processType
             ,stepcounter
@@ -58,7 +58,7 @@ EXCEPTION
             ,message
         )
         VALUES (
-            ,runUuid
+            runUuid
             ,CURRENT_TIMESTAMP
             ,'QueryMonitor'
             ,'error'
