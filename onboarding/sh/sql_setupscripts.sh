@@ -26,6 +26,7 @@ SQL_SCRIPTS=(
     "log_cleanup.sql"
     "table_index_monitoring.sql"
     "monitor_long_running_queries.sql"
+    "create_importconfig_table.sql"
 )
 
 # Ensure log directory exists
