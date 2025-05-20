@@ -17,7 +17,8 @@ from systemscripts.log_utils import log_message
 from systemscripts.directory_management import ensure_directory_exists, LOG_DIR, FILE_WATCHER_DIR
 from systemscripts.xls_to_csv import xls_to_csv
 
-
+# Add root directory to sys.path
+sys.path.append(str(Path(__file__).parent.parent))
 
 # Database connection parameters
 DB_PARAMS = {
@@ -113,19 +114,29 @@ def get_table_columns(cursor, table_name):
             WHERE table_schema || '.' || table_name = %s
             ORDER BY ordinal_position;
         """, (table_name,))
-        return [row[0] for row in cursor.fetchall()]
+        return [row[0] for row in cur.fetchall()]
     except Exception as e:
         return []
 
-def add_columns_to_table(cursor, table_name, new_columns, log_file, run_uuid, user, script_start_time):
-    """Add new columns to the target table as VARCHAR(255)."""
+def get_column_lengths(df):
+    """Determine the maximum length of data in each column."""
+    lengths = {}
+    for col in df.columns:
+        # Convert all values to strings and find the max length
+        max_length = df[col].astype(str).str.len().max()
+        lengths[col] = max_length if not pd.isna(max_length) else 255
+    return lengths
+
+def add_columns_to_table(cursor, table_name, new_columns, column_lengths, log_file, run_uuid, user, script_start_time):
+    """Add new columns to the target table with appropriate VARCHAR length."""
     try:
         for column in new_columns:
+            varchar_length = 1000 if column_lengths.get(column, 255) > 255 else 255
             cursor.execute(f"""
                 ALTER TABLE {table_name}
-                ADD COLUMN IF NOT EXISTS "{column}" VARCHAR(255);
+                ADD COLUMN IF NOT EXISTS "{column}" VARCHAR({varchar_length});
             """)
-            log_message(log_file, "SchemaUpdate", f"Added column {column} to {table_name}",
+            log_message(log_file, "SchemaUpdate", f"Added column {column} as VARCHAR({varchar_length}) to {table_name}",
                         run_uuid=run_uuid, stepcounter=f"SchemaUpdate_{column}", user=user, script_start_time=script_start_time)
         return True
     except psycopg2.Error as e:
@@ -257,7 +268,7 @@ def generic_import(config_id):
                             run_uuid=run_uuid, stepcounter=f"File_{filename}_3", user=user, script_start_time=script_start_time)
                 continue
 
-        # Read CSV to get source columns
+        # Read CSV to get source columns and data lengths
         try:
             df = pd.read_csv(csv_path)
             log_message(log_file, "Processing", f"Read {len(df)} rows from {csv_path} with columns: {', '.join(df.columns)}",
@@ -269,6 +280,9 @@ def generic_import(config_id):
                 os.remove(csv_path)  # Clean up temporary CSV
             continue
 
+        # Get column lengths
+        column_lengths = get_column_lengths(df)
+
         # Check if table exists and handle columns
         with psycopg2.connect(**DB_PARAMS) as conn:
             with conn.cursor() as cur:
@@ -276,8 +290,10 @@ def generic_import(config_id):
                 if not table_exists(cur, config["target_table"]):
                     if config["importstrategyid"] == 1:
                         # Strategy 1: Create table with source columns plus metadata
-                        columns = [f'"{col}" VARCHAR(255)' for col in df.columns]
-                        columns.append('"id" SERIAL PRIMARY KEY')
+                        columns = []
+                        for col in df.columns:
+                            varchar_length = 1000 if column_lengths.get(col, 255) > 255 else 255
+                            columns.append(f'"{col}" VARCHAR({varchar_length})')
                         if config["metadata_label_source"] != "none":
                             columns.append('"metadata_label" VARCHAR(255)')
                         if config["DateConfig"] != "none":
@@ -297,7 +313,7 @@ def generic_import(config_id):
                                         run_uuid=run_uuid, stepcounter="SchemaCreate_1", user=user, script_start_time=script_start_time)
                             continue
                     else:
-                        log_message(log_file, "Error", f"Table {config['target_table']} does not exist and importstrategyid {config['importstrategyid']} does not allow creation",
+                        log_message(log_file, "Error", f"Table {config['target_table']} does not exist and ImportStrategy {config['ImportStrategy']} does not allow creation",
                                     run_uuid=run_uuid, stepcounter="SchemaCheck_0", user=user, script_start_time=script_start_time)
                         continue
 
@@ -311,12 +327,12 @@ def generic_import(config_id):
 
                 # Identify new and missing columns
                 new_columns = [col for col in source_columns if col not in table_columns]
-                missing_columns = [col for col in table_columns if col not in source_columns and col not in ['id', 'metadata_label', 'event_date']]
+                missing_columns = [col for col in table_columns if col not in source_columns and col not in ['metadata_label', 'event_date']]
 
                 # Apply importstrategyid
                 if config["importstrategyid"] == 1:  # Import and create new columns
                     if new_columns:
-                        if not add_columns_to_table(cur, config["target_table"], new_columns, log_file, run_uuid, user, script_start_time):
+                        if not add_columns_to_table(cur, config["target_table"], new_columns, column_lengths, log_file, run_uuid, user, script_start_time):
                             continue
                         conn.commit()
                 elif config["importstrategyid"] == 2:  # Import only (ignore new columns)
