@@ -35,7 +35,7 @@ def get_config(config_id, log_file, run_uuid, user, script_start_time):
                 cur.execute("""
                     SELECT config_name, DataSource, DataSetType, source_directory, archive_directory,
                            file_pattern, file_type, metadata_label_source, metadata_label_location,
-                           DateConfig, DateLocation, delimiter, target_table, is_active
+                           DateConfig, DateLocation, delimiter, target_table, importstrategyid, is_active
                     FROM dba.timportconfig
                     WHERE config_id = %s AND is_active = '1';
                 """, (config_id,))
@@ -57,7 +57,8 @@ def get_config(config_id, log_file, run_uuid, user, script_start_time):
                     "DateConfig": config[9],
                     "DateLocation": config[10],
                     "delimiter": config[11],
-                    "target_table": config[12]
+                    "target_table": config[12],
+                    "importstrategyid": config[13]
                 }
     except psycopg2.Error as e:
         log_message(log_file, "Error", f"Database error fetching config_id {config_id}: {str(e)}",
@@ -88,28 +89,66 @@ def parse_metadata(filename, config, field_source, field_location, delimiter, lo
         return field_location  # Will be handled during data loading
     return None
 
+def table_exists(cursor, table_name):
+    """Check if a table exists in the database."""
+    try:
+        schema, table = table_name.split('.')
+        cursor.execute("""
+            SELECT EXISTS (
+                SELECT 1
+                FROM information_schema.tables
+                WHERE table_schema = %s AND table_name = %s
+            );
+        """, (schema, table))
+        return cursor.fetchone()[0]
+    except Exception as e:
+        return False
+
+def get_table_columns(cursor, table_name):
+    """Get the columns of a table."""
+    try:
+        cursor.execute("""
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_schema || '.' || table_name = %s
+            ORDER BY ordinal_position;
+        """, (table_name,))
+        return [row[0] for row in cursor.fetchall()]
+    except Exception as e:
+        return []
+
+def add_columns_to_table(cursor, table_name, new_columns, log_file, run_uuid, user, script_start_time):
+    """Add new columns to the target table as VARCHAR(255)."""
+    try:
+        for column in new_columns:
+            cursor.execute(f"""
+                ALTER TABLE {table_name}
+                ADD COLUMN IF NOT EXISTS "{column}" VARCHAR(255);
+            """)
+            log_message(log_file, "SchemaUpdate", f"Added column {column} to {table_name}",
+                        run_uuid=run_uuid, stepcounter=f"SchemaUpdate_{column}", user=user, script_start_time=script_start_time)
+        return True
+    except psycopg2.Error as e:
+        log_message(log_file, "Error", f"Failed to add columns to {table_name}: {str(e)}",
+                    run_uuid=run_uuid, stepcounter="SchemaUpdate_Error", user=user, script_start_time=script_start_time)
+        return False
+
 def load_data_to_postgres(df, target_table, metadata_label, event_date, log_file, run_uuid, user, script_start_time):
     """Load DataFrame to PostgreSQL table with metadata and date."""
     try:
         with psycopg2.connect(**DB_PARAMS) as conn:
             with conn.cursor() as cur:
                 # Get table columns
-                cur.execute(f"""
-                    SELECT column_name
-                    FROM information_schema.columns
-                    WHERE table_schema || '.' || table_name = %s
-                    ORDER BY ordinal_position;
-                """, (target_table,))
-                columns = [row[0] for row in cur.fetchall()]
+                table_columns = get_table_columns(cur, target_table)
                 
                 # Add metadata and date columns if configured
-                if metadata_label and "metadata_label" in columns:
+                if metadata_label and "metadata_label" in table_columns:
                     df["metadata_label"] = metadata_label
-                if event_date and "event_date" in columns:
+                if event_date and "event_date" in table_columns:
                     df["event_date"] = event_date
                 
                 # Filter DataFrame to match table columns
-                df = df[[col for col in df.columns if col in columns]]
+                df = df[[col for col in df.columns if col in table_columns]]
                 
                 # Convert DataFrame to list of tuples
                 records = [tuple(row) for row in df.to_numpy()]
@@ -218,18 +257,10 @@ def generic_import(config_id):
                             run_uuid=run_uuid, stepcounter=f"File_{filename}_3", user=user, script_start_time=script_start_time)
                 continue
 
-        # Parse metadata
-        metadata_label = parse_metadata(filename, config, config["metadata_label_source"],
-                                       config["metadata_label_location"], config["delimiter"],
-                                       log_file, run_uuid, user, script_start_time)
-        event_date = parse_metadata(filename, config, config["DateConfig"],
-                                    config["DateLocation"], config["delimiter"],
-                                    log_file, run_uuid, user, script_start_time)
-
-        # Read CSV
+        # Read CSV to get source columns
         try:
             df = pd.read_csv(csv_path)
-            log_message(log_file, "Processing", f"Read {len(df)} rows from {csv_path}",
+            log_message(log_file, "Processing", f"Read {len(df)} rows from {csv_path} with columns: {', '.join(df.columns)}",
                         run_uuid=run_uuid, stepcounter=f"File_{filename}_4", user=user, script_start_time=script_start_time)
         except Exception as e:
             log_message(log_file, "Error", f"Failed to read CSV {csv_path}: {str(e)}",
@@ -238,27 +269,93 @@ def generic_import(config_id):
                 os.remove(csv_path)  # Clean up temporary CSV
             continue
 
-        # Load data to PostgreSQL
-        if load_data_to_postgres(df, config["target_table"], metadata_label, event_date,
-                                log_file, run_uuid, user, script_start_time):
-            # Move file to archive
-            archive_path = os.path.join(config["archive_directory"], filename)
-            try:
-                shutil.move(file_path, archive_path)
-                os.chmod(archive_path, 0o660)
-                os.chown(archive_path, os.getuid(), os.getgrnam('etl_group').gr_gid)
-                log_message(log_file, "Processing", f"Moved {filename} to {archive_path}",
-                            run_uuid=run_uuid, stepcounter=f"File_{filename}_6", user=user, script_start_time=script_start_time)
-            except Exception as e:
-                log_message(log_file, "Error", f"Failed to move {filename} to archive: {str(e)}",
-                            run_uuid=run_uuid, stepcounter=f"File_{filename}_7", user=user, script_start_time=script_start_time)
-        else:
-            log_message(log_file, "Error", f"Failed to load data from {filename} to {config['target_table']}",
-                        run_uuid=run_uuid, stepcounter=f"File_{filename}_8", user=user, script_start_time=script_start_time)
+        # Check if table exists and handle columns
+        with psycopg2.connect(**DB_PARAMS) as conn:
+            with conn.cursor() as cur:
+                # Check if table exists
+                if not table_exists(cur, config["target_table"]):
+                    if config["importstrategyid"] == 1:
+                        # Strategy 1: Create table with source columns plus metadata
+                        columns = [f'"{col}" VARCHAR(255)' for col in df.columns]
+                        columns.append('"id" SERIAL PRIMARY KEY')
+                        if config["metadata_label_source"] != "none":
+                            columns.append('"metadata_label" VARCHAR(255)')
+                        if config["DateConfig"] != "none":
+                            columns.append('"event_date" VARCHAR(50)')
+                        create_query = f"""
+                            CREATE TABLE {config["target_table"]} (
+                                {', '.join(columns)}
+                            );
+                        """
+                        try:
+                            cur.execute(create_query)
+                            conn.commit()
+                            log_message(log_file, "SchemaUpdate", f"Created table {config['target_table']} with columns: {', '.join(df.columns)}",
+                                        run_uuid=run_uuid, stepcounter="SchemaCreate_0", user=user, script_start_time=script_start_time)
+                        except psycopg2.Error as e:
+                            log_message(log_file, "Error", f"Failed to create table {config['target_table']}: {str(e)}",
+                                        run_uuid=run_uuid, stepcounter="SchemaCreate_1", user=user, script_start_time=script_start_time)
+                            continue
+                    else:
+                        log_message(log_file, "Error", f"Table {config['target_table']} does not exist and importstrategyid {config['importstrategyid']} does not allow creation",
+                                    run_uuid=run_uuid, stepcounter="SchemaCheck_0", user=user, script_start_time=script_start_time)
+                        continue
 
-        # Clean up temporary CSV if created
-        if csv_path != file_path and os.path.exists(csv_path):
-            os.remove(csv_path)
+                # Get table and source columns
+                table_columns = get_table_columns(cur, config["target_table"])
+                source_columns = list(df.columns)
+                log_message(log_file, "SchemaCheck", f"Table columns: {', '.join(table_columns)}",
+                            run_uuid=run_uuid, stepcounter="SchemaCheck_1", user=user, script_start_time=script_start_time)
+                log_message(log_file, "SchemaCheck", f"Source columns: {', '.join(source_columns)}",
+                            run_uuid=run_uuid, stepcounter="SchemaCheck_2", user=user, script_start_time=script_start_time)
+
+                # Identify new and missing columns
+                new_columns = [col for col in source_columns if col not in table_columns]
+                missing_columns = [col for col in table_columns if col not in source_columns and col not in ['id', 'metadata_label', 'event_date']]
+
+                # Apply importstrategyid
+                if config["importstrategyid"] == 1:  # Import and create new columns
+                    if new_columns:
+                        if not add_columns_to_table(cur, config["target_table"], new_columns, log_file, run_uuid, user, script_start_time):
+                            continue
+                        conn.commit()
+                elif config["importstrategyid"] == 2:  # Import only (ignore new columns)
+                    pass  # No action needed; new columns are ignored
+                elif config["importstrategyid"] == 3:  # Import or fail if columns missing
+                    if missing_columns:
+                        log_message(log_file, "Error", f"Missing required columns in source file: {', '.join(missing_columns)}",
+                                    run_uuid=run_uuid, stepcounter="SchemaCheck_3", user=user, script_start_time=script_start_time)
+                        continue
+
+                # Parse metadata
+                metadata_label = parse_metadata(filename, config, config["metadata_label_source"],
+                                               config["metadata_label_location"], config["delimiter"],
+                                               log_file, run_uuid, user, script_start_time)
+                event_date = parse_metadata(filename, config, config["DateConfig"],
+                                            config["DateLocation"], config["delimiter"],
+                                            log_file, run_uuid, user, script_start_time)
+
+                # Load data to PostgreSQL
+                if load_data_to_postgres(df, config["target_table"], metadata_label, event_date,
+                                        log_file, run_uuid, user, script_start_time):
+                    # Move file to archive
+                    archive_path = os.path.join(config["archive_directory"], filename)
+                    try:
+                        shutil.move(file_path, archive_path)
+                        os.chmod(archive_path, 0o660)
+                        os.chown(archive_path, os.getuid(), os.getgrnam('etl_group').gr_gid)
+                        log_message(log_file, "Processing", f"Moved {filename} to {archive_path}",
+                                    run_uuid=run_uuid, stepcounter=f"File_{filename}_6", user=user, script_start_time=script_start_time)
+                    except Exception as e:
+                        log_message(log_file, "Error", f"Failed to move {filename} to archive: {str(e)}",
+                                    run_uuid=run_uuid, stepcounter=f"File_{filename}_7", user=user, script_start_time=script_start_time)
+                else:
+                    log_message(log_file, "Error", f"Failed to load data from {filename} to {config['target_table']}",
+                                run_uuid=run_uuid, stepcounter=f"File_{filename}_8", user=user, script_start_time=script_start_time)
+
+                # Clean up temporary CSV if created
+                if csv_path != file_path and os.path.exists(csv_path):
+                    os.remove(csv_path)
 
     log_message(log_file, "Finalization", f"Completed processing for config_id {config_id}",
                 run_uuid=run_uuid, stepcounter="Finalization_0", user=user, script_start_time=script_start_time)
