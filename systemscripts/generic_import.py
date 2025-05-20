@@ -184,10 +184,8 @@ def load_data_to_postgres(df, target_table, dataset_id, metadata_label, event_da
                 table_columns = get_table_columns(cur, target_table)
                 table_columns_lower = [col.lower() for col in table_columns]
                 
-                # Add primary key, datasetid, metadata, and date columns
+                # Add datasetid, metadata, and date columns (primary key is handled by SERIAL)
                 df_columns = list(df.columns)
-                table_name = target_table.split('.')[-1]
-                df[f"{table_name}id"] = [str(uuid.uuid4()) for _ in range(len(df))]  # Generate UUIDs
                 df["datasetid"] = dataset_id
                 if metadata_label and "metadata_label" in table_columns_lower:
                     df["metadata_label"] = metadata_label
@@ -197,7 +195,7 @@ def load_data_to_postgres(df, target_table, dataset_id, metadata_label, event_da
                 # Filter DataFrame to match table columns (case-insensitive)
                 matching_columns = []
                 column_mapping = {}
-                for col in df_columns + [f"{table_name}id", "datasetid", "metadata_label", "event_date"]:
+                for col in df_columns + ["datasetid", "metadata_label", "event_date"]:
                     col_lower = col.lower()
                     for table_col in table_columns:
                         if col_lower == table_col.lower():
@@ -313,7 +311,7 @@ def generic_import(config_id):
             with conn.cursor() as cur:
                 dataset_id = insert_dataset(cur, config["config_name"], dataset_date, label, log_file, run_uuid, user, script_start_time)
                 if not dataset_id:
-                    log_message(log_file, "Error", "Failed to create dataset for file {filename}. Skipping.",
+                    log_message(log_file, "Error", f"Failed to create dataset for file {filename}. Skipping.",
                                 run_uuid=run_uuid, stepcounter=f"File_{filename}_1", user=user, script_start_time=script_start_time)
                     success = False
                     continue
@@ -364,7 +362,7 @@ def generic_import(config_id):
                         # Strategy 1: Create table with source columns plus metadata
                         columns = []
                         table_name = config["target_table"].split('.')[-1]
-                        columns.append(f'"{table_name}id" VARCHAR(255) PRIMARY KEY')
+                        columns.append(f'"{table_name}id" SERIAL PRIMARY KEY')
                         columns.append('"datasetid" INT NOT NULL REFERENCES dba.tDataSet(DataSetID)')
                         for col in df.columns:
                             varchar_length = 1000 if column_lengths.get(col, 255) > 255 else 255
