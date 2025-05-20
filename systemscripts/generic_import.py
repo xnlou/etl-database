@@ -12,6 +12,7 @@ sys.path.append(str(Path(__file__).parent.parent))
 from datetime import datetime
 import csv
 import shutil
+import traceback
 from systemscripts.user_utils import get_username
 from systemscripts.log_utils import log_message
 from systemscripts.directory_management import ensure_directory_exists, LOG_DIR, FILE_WATCHER_DIR
@@ -322,7 +323,7 @@ def load_data_to_postgres(df, target_table, dataset_id, metadata_label, event_da
                     run_uuid=run_uuid, stepcounter="DataLoad_1", user=user, script_start_time=script_start_time)
         return False
     except Exception as e:
-        log_message(log_file, "Error", f"Unexpected error loading to {target_table}: {str(e)}",
+        log_message(log_file, "Error", f"Unexpected error loading to {target_table}: {str(e)}\n{traceback.format_exc()}",
                     run_uuid=run_uuid, stepcounter="DataLoad_5", user=user, script_start_time=script_start_time)
         return False
 
@@ -335,10 +336,13 @@ def generic_import(config_id):
     log_file = LOG_DIR / f"generic_import_{timestamp}"
 
     # Ensure log directory exists
-    ensure_directory_exists(LOG_DIR)
-
-    log_message(log_file, "Initialization", f"Script started at {timestamp} for config_id {config_id}",
-                run_uuid=run_uuid, stepcounter="Initialization_0", user=user, script_start_time=script_start_time)
+    try:
+        ensure_directory_exists(LOG_DIR)
+        log_message(log_file, "Initialization", f"Script started at {timestamp} for config_id {config_id}",
+                    run_uuid=run_uuid, stepcounter="Initialization_0", user=user, script_start_time=script_start_time)
+    except Exception as e:
+        print(f"Error initializing log directory: {str(e)}")
+        sys.exit(1)
 
     # Fetch configuration
     config = get_config(config_id, log_file, run_uuid, user, script_start_time)
@@ -386,6 +390,10 @@ def generic_import(config_id):
         log_message(log_file, "Error", f"Invalid regex pattern {config['file_pattern']}: {str(e)}",
                     run_uuid=run_uuid, stepcounter="FileSearch_3", user=user, script_start_time=script_start_time)
         return
+    except Exception as e:
+        log_message(log_file, "Error", f"Unexpected error in file search: {str(e)}\n{traceback.format_exc()}",
+                    run_uuid=run_uuid, stepcounter="FileSearch_4", user=user, script_start_time=script_start_time)
+        return
 
     success = True
     dataset_ids = []
@@ -404,22 +412,28 @@ def generic_import(config_id):
         # Ensure DataSource and DataSetType exist and get their IDs
         with psycopg2.connect(**DB_PARAMS) as conn:
             with conn.cursor() as cur:
-                datasource_id, dataset_type_id = ensure_lookup_ids(cur, config["DataSource"], config["DataSetType"], user, log_file, run_uuid, script_start_time)
-                if not datasource_id or not dataset_type_id:
-                    log_message(log_file, "Error", f"Failed to ensure lookup IDs for file {filename}. Skipping.",
-                                run_uuid=run_uuid, stepcounter=f"File_{filename}_1", user=user, script_start_time=script_start_time)
-                    success = False
-                    continue
+                try:
+                    datasource_id, dataset_type_id = ensure_lookup_ids(cur, config["DataSource"], config["DataSetType"], user, log_file, run_uuid, script_start_time)
+                    if not datasource_id or not dataset_type_id:
+                        log_message(log_file, "Error", f"Failed to ensure lookup IDs for file {filename}. Skipping.",
+                                    run_uuid=run_uuid, stepcounter=f"File_{filename}_1", user=user, script_start_time=script_start_time)
+                        success = False
+                        continue
 
-                # Insert dataset record
-                dataset_id = insert_dataset(cur, config["config_name"], dataset_date, label, datasource_id, dataset_type_id, log_file, run_uuid, user, script_start_time)
-                if not dataset_id:
-                    log_message(log_file, "Error", f"Failed to create dataset for file {filename}. Skipping.",
-                                run_uuid=run_uuid, stepcounter=f"File_{filename}_2", user=user, script_start_time=script_start_time)
+                    # Insert dataset record
+                    dataset_id = insert_dataset(cur, config["config_name"], dataset_date, label, datasource_id, dataset_type_id, log_file, run_uuid, user, script_start_time)
+                    if not dataset_id:
+                        log_message(log_file, "Error", f"Failed to create dataset for file {filename}. Skipping.",
+                                    run_uuid=run_uuid, stepcounter=f"File_{filename}_2", user=user, script_start_time=script_start_time)
+                        success = False
+                        continue
+                    dataset_ids.append((dataset_id, datasource_id, dataset_type_id, label, dataset_date))
+                    conn.commit()
+                except Exception as e:
+                    log_message(log_file, "Error", f"Unexpected error in dataset setup for {filename}: {str(e)}\n{traceback.format_exc()}",
+                                run_uuid=run_uuid, stepcounter=f"File_{filename}_3", user=user, script_start_time=script_start_time)
                     success = False
                     continue
-                dataset_ids.append((dataset_id, datasource_id, dataset_type_id, label, dataset_date))
-                conn.commit()
 
         # Convert XLS/XLSX to CSV if needed
         csv_path = file_path
@@ -429,14 +443,14 @@ def generic_import(config_id):
                 xls_to_csv(file_path)
                 if not os.path.exists(csv_path):
                     log_message(log_file, "Error", f"Failed to convert {filename} to CSV",
-                                run_uuid=run_uuid, stepcounter=f"File_{filename}_3", user=user, script_start_time=script_start_time)
+                                run_uuid=run_uuid, stepcounter=f"File_{filename}_4", user=user, script_start_time=script_start_time)
                     success = False
                     continue
                 log_message(log_file, "Conversion", f"Converted {filename} to {csv_path}",
-                            run_uuid=run_uuid, stepcounter=f"File_{filename}_4", user=user, script_start_time=script_start_time)
-            except Exception as e:
-                log_message(log_file, "Error", f"Conversion error for {filename}: {str(e)}",
                             run_uuid=run_uuid, stepcounter=f"File_{filename}_5", user=user, script_start_time=script_start_time)
+            except Exception as e:
+                log_message(log_file, "Error", f"Conversion error for {filename}: {str(e)}\n{traceback.format_exc()}",
+                            run_uuid=run_uuid, stepcounter=f"File_{filename}_6", user=user, script_start_time=script_start_time)
                 success = False
                 continue
 
@@ -444,123 +458,153 @@ def generic_import(config_id):
         try:
             df = pd.read_csv(csv_path)
             log_message(log_file, "Processing", f"Read {len(df)} rows from {csv_path} with columns: {', '.join(df.columns)}",
-                        run_uuid=run_uuid, stepcounter=f"File_{filename}_6", user=user, script_start_time=script_start_time)
-        except Exception as e:
-            log_message(log_file, "Error", f"Failed to read CSV {csv_path}: {str(e)}",
                         run_uuid=run_uuid, stepcounter=f"File_{filename}_7", user=user, script_start_time=script_start_time)
+        except Exception as e:
+            log_message(log_file, "Error", f"Failed to read CSV {csv_path}: {str(e)}\n{traceback.format_exc()}",
+                        run_uuid=run_uuid, stepcounter=f"File_{filename}_8", user=user, script_start_time=script_start_time)
             success = False
             if csv_path != file_path and os.path.exists(csv_path):
                 os.remove(csv_path)
             continue
 
         # Get column lengths
-        column_lengths = get_column_lengths(df)
+        try:
+            column_lengths = get_column_lengths(df)
+            log_message(log_file, "Processing", f"Computed column lengths: {column_lengths}",
+                        run_uuid=run_uuid, stepcounter=f"File_{filename}_9", user=user, script_start_time=script_start_time)
+        except Exception as e:
+            log_message(log_file, "Error", f"Failed to compute column lengths for {filename}: {str(e)}\n{traceback.format_exc()}",
+                        run_uuid=run_uuid, stepcounter=f"File_{filename}_10", user=user, script_start_time=script_start_time)
+            success = False
+            continue
 
         # Check if table exists and handle columns
         with psycopg2.connect(**DB_PARAMS) as conn:
             with conn.cursor() as cur:
-                # Check if table exists
-                if not table_exists(cur, config["target_table"]):
-                    if config["importstrategyid"] == 1:
-                        # Strategy 1: Create table with source columns plus metadata
-                        columns = []
-                        table_name = config["target_table"].split('.')[-1]
-                        columns.append(f'"{table_name}id" SERIAL PRIMARY KEY')
-                        columns.append('"datasetid" INT NOT NULL REFERENCES dba.tDataSet(DataSetID)')
-                        for col in df.columns:
-                            varchar_length = 1000 if column_lengths.get(col, 255) > 255 else 255
-                            columns.append(f'"{col}" VARCHAR({varchar_length})')
-                        if config["metadata_label_source"] != "none":
-                            columns.append('"metadata_label" VARCHAR(255)')
-                        if config["DateConfig"] != "none":
-                            columns.append('"event_date" VARCHAR(50)')
-                        create_query = f"""
-                            CREATE TABLE {config["target_table"]} (
-                                {', '.join(columns)}
-                            );
-                        """
-                        try:
-                            cur.execute(create_query)
+                try:
+                    # Define table_name early
+                    table_name = config["target_table"].split('.')[-1]
+
+                    # Check if table exists
+                    if not table_exists(cur, config["target_table"]):
+                        if config["importstrategyid"] == 1:
+                            # Strategy 1: Create table with source columns plus metadata
+                            columns = []
+                            columns.append(f'"{table_name}id" SERIAL PRIMARY KEY')
+                            columns.append('"datasetid" INT NOT NULL REFERENCES dba.tDataSet(DataSetID)')
+                            for col in df.columns:
+                                varchar_length = 1000 if column_lengths.get(col, 255) > 255 else 255
+                                columns.append(f'"{col}" VARCHAR({varchar_length})')
+                            if config["metadata_label_source"] != "none":
+                                columns.append('"metadata_label" VARCHAR(255)')
+                            if config["DateConfig"] != "none":
+                                columns.append('"event_date" VARCHAR(50)')
+                            create_query = f"""
+                                CREATE TABLE {config["target_table"]} (
+                                    {', '.join(columns)}
+                                );
+                            """
+                            try:
+                                cur.execute(create_query)
+                                conn.commit()
+                                log_message(log_file, "SchemaUpdate", f"Created table {config['target_table']} with columns: {table_name}id, datasetid, {', '.join(df.columns)}",
+                                            run_uuid=run_uuid, stepcounter="SchemaCreate_0", user=user, script_start_time=script_start_time)
+                            except psycopg2.Error as e:
+                                log_message(log_file, "Error", f"Failed to create table {config['target_table']}: {str(e)}\n{traceback.format_exc()}",
+                                            run_uuid=run_uuid, stepcounter="SchemaCreate_1", user=user, script_start_time=script_start_time)
+                                success = False
+                                continue
+                        else:
+                            log_message(log_file, "Error", f"Table {config['target_table']} does not exist and importstrategyid {config['importstrategyid']} does not allow creation",
+                                        run_uuid=run_uuid, stepcounter="SchemaCheck_0", user=user, script_start_time=script_start_time)
+                            success = False
+                            continue
+
+                    # Get table and source columns
+                    table_columns = get_table_columns(cur, config["target_table"])
+                    source_columns = list(df.columns)
+                    log_message(log_file, "SchemaCheck", f"Table columns: {', '.join(table_columns)}",
+                                run_uuid=run_uuid, stepcounter="SchemaCheck_1", user=user, script_start_time=script_start_time)
+                    log_message(log_file, "SchemaCheck", f"Source columns: {', '.join(source_columns)}",
+                                run_uuid=run_uuid, stepcounter="SchemaCheck_2", user=user, script_start_time=script_start_time)
+
+                    # Identify new and missing columns
+                    new_columns = [col for col in source_columns if col not in table_columns]
+                    missing_columns = [col for col in table_columns if col not in source_columns and col not in [f"{table_name}id", 'datasetid', 'metadata_label', 'event_date']]
+
+                    # Apply importstrategyid
+                    if config["importstrategyid"] == 1:  # Import and create new columns
+                        if new_columns:
+                            if not add_columns_to_table(cur, config["target_table"], new_columns, column_lengths, log_file, run_uuid, user, script_start_time):
+                                success = False
+                                continue
                             conn.commit()
-                            log_message(log_file, "SchemaUpdate", f"Created table {config['target_table']} with columns: {table_name}id, datasetid, {', '.join(df.columns)}",
-                                        run_uuid=run_uuid, stepcounter="SchemaCreate_0", user=user, script_start_time=script_start_time)
-                        except psycopg2.Error as e:
-                            log_message(log_file, "Error", f"Failed to create table {config['target_table']}: {str(e)}",
-                                        run_uuid=run_uuid, stepcounter="SchemaCreate_1", user=user, script_start_time=script_start_time)
+                    elif config["importstrategyid"] == 2:  # Import only (ignore new columns)
+                        pass
+                    elif config["importstrategyid"] == 3:  # Import or fail if columns missing
+                        if missing_columns:
+                            log_message(log_file, "Error", f"Missing required columns in source file: {', '.join(missing_columns)}",
+                                        run_uuid=run_uuid, stepcounter="SchemaCheck_3", user=user, script_start_time=script_start_time)
                             success = False
                             continue
+
+                    # Parse metadata
+                    metadata_label = parse_metadata(filename, config, config["metadata_label_source"],
+                                                   config["metadata_label_location"], config["delimiter"],
+                                                   log_file, run_uuid, user, script_start_time)
+                    event_date = parse_metadata(filename, config, config["DateConfig"],
+                                                config["DateLocation"], config["delimiter"],
+                                                log_file, run_uuid, user, script_start_time)
+
+                    # Load data to PostgreSQL
+                    log_message(log_file, "Processing", f"Calling load_data_to_postgres for {filename} with dataset_id {dataset_id}",
+                                run_uuid=run_uuid, stepcounter=f"File_{filename}_11", user=user, script_start_time=script_start_time)
+                    if load_data_to_postgres(df, config["target_table"], dataset_id, metadata_label, event_date,
+                                            log_file, run_uuid, user, script_start_time):
+                        # Move file to archive
+                        archive_path = os.path.join(config["archive_directory"], filename)
+                        try:
+                            shutil.move(file_path, archive_path)
+                            os.chmod(archive_path, 0o660)
+                            os.chown(archive_path, os.getuid(), os.getgrnam('etl_group').gr_gid)
+                            log_message(log_file, "Processing", f"Moved {filename} to {archive_path}",
+                                        run_uuid=run_uuid, stepcounter=f"File_{filename}_12", user=user, script_start_time=script_start_time)
+                        except Exception as e:
+                            log_message(log_file, "Error", f"Failed to move {filename} to archive: {str(e)}\n{traceback.format_exc()}",
+                                        run_uuid=run_uuid, stepcounter=f"File_{filename}_13", user=user, script_start_time=script_start_time)
+                            success = False
                     else:
-                        log_message(log_file, "Error", f"Table {config['target_table']} does not exist and importstrategyid {config['importstrategyid']} does not allow creation",
-                                    run_uuid=run_uuid, stepcounter="SchemaCheck_0", user=user, script_start_time=script_start_time)
+                        log_message(log_file, "Error", f"Failed to load data from {filename} to {config['target_table']}",
+                                    run_uuid=run_uuid, stepcounter=f"File_{filename}_14", user=user, script_start_time=script_start_time)
                         success = False
-                        continue
-
-                # Get table and source columns
-                table_columns = get_table_columns(cur, config["target_table"])
-                source_columns = list(df.columns)
-                log_message(log_file, "SchemaCheck", f"Table columns: {', '.join(table_columns)}",
-                            run_uuid=run_uuid, stepcounter="SchemaCheck_1", user=user, script_start_time=script_start_time)
-                log_message(log_file, "SchemaCheck", f"Source columns: {', '.join(source_columns)}",
-                            run_uuid=run_uuid, stepcounter="SchemaCheck_2", user=user, script_start_time=script_start_time)
-
-                # Identify new and missing columns
-                new_columns = [col for col in source_columns if col not in table_columns]
-                missing_columns = [col for col in table_columns if col not in source_columns and col not in [f"{table_name}id", 'datasetid', 'metadata_label', 'event_date']]
-
-                # Apply importstrategyid
-                if config["importstrategyid"] == 1:  # Import and create new columns
-                    if new_columns:
-                        if not add_columns_to_table(cur, config["target_table"], new_columns, column_lengths, log_file, run_uuid, user, script_start_time):
-                            success = False
-                            continue
-                        conn.commit()
-                elif config["importstrategyid"] == 2:  # Import only (ignore new columns)
-                    pass
-                elif config["importstrategyid"] == 3:  # Import or fail if columns missing
-                    if missing_columns:
-                        log_message(log_file, "Error", f"Missing required columns in source file: {', '.join(missing_columns)}",
-                                    run_uuid=run_uuid, stepcounter="SchemaCheck_3", user=user, script_start_time=script_start_time)
-                        success = False
-                        continue
-
-                # Parse metadata
-                metadata_label = parse_metadata(filename, config, config["metadata_label_source"],
-                                               config["metadata_label_location"], config["delimiter"],
-                                               log_file, run_uuid, user, script_start_time)
-                event_date = parse_metadata(filename, config, config["DateConfig"],
-                                            config["DateLocation"], config["delimiter"],
-                                            log_file, run_uuid, user, script_start_time)
-
-                # Load data to PostgreSQL
-                if load_data_to_postgres(df, config["target_table"], dataset_id, metadata_label, event_date,
-                                        log_file, run_uuid, user, script_start_time):
-                    # Move file to archive
-                    archive_path = os.path.join(config["archive_directory"], filename)
-                    try:
-                        shutil.move(file_path, archive_path)
-                        os.chmod(archive_path, 0o660)
-                        os.chown(archive_path, os.getuid(), os.getgrnam('etl_group').gr_gid)
-                        log_message(log_file, "Processing", f"Moved {filename} to {archive_path}",
-                                    run_uuid=run_uuid, stepcounter=f"File_{filename}_6", user=user, script_start_time=script_start_time)
-                    except Exception as e:
-                        log_message(log_file, "Error", f"Failed to move {filename} to archive: {str(e)}",
-                                    run_uuid=run_uuid, stepcounter=f"File_{filename}_7", user=user, script_start_time=script_start_time)
-                        success = False
-                else:
-                    log_message(log_file, "Error", f"Failed to load data from {filename} to {config['target_table']}",
-                                run_uuid=run_uuid, stepcounter=f"File_{filename}_8", user=user, script_start_time=script_start_time)
+                except Exception as e:
+                    log_message(log_file, "Error", f"Unexpected error processing {filename}: {str(e)}\n{traceback.format_exc()}",
+                                run_uuid=run_uuid, stepcounter=f"File_{filename}_15", user=user, script_start_time=script_start_time)
                     success = False
+                    continue
 
                 # Clean up temporary CSV if created
                 if csv_path != file_path and os.path.exists(csv_path):
-                    os.remove(csv_path)
+                    try:
+                        os.remove(csv_path)
+                        log_message(log_file, "Processing", f"Removed temporary CSV {csv_path}",
+                                    run_uuid=run_uuid, stepcounter=f"File_{filename}_16", user=user, script_start_time=script_start_time)
+                    except Exception as e:
+                        log_message(log_file, "Error", f"Failed to remove temporary CSV {csv_path}: {str(e)}\n{traceback.format_exc()}",
+                                    run_uuid=run_uuid, stepcounter=f"File_{filename}_17", user=user, script_start_time=script_start_time)
 
     # Update dataset status for all processed datasets
     with psycopg2.connect(**DB_PARAMS) as conn:
         with conn.cursor() as cur:
-            for dataset_id, datasource_id, dataset_type_id, label, dataset_date in dataset_ids:
-                update_dataset_status(cur, dataset_id, success, datasource_id, dataset_type_id, label, dataset_date, log_file, run_uuid, user, script_start_time)
-            conn.commit()
+            try:
+                for dataset_id, datasource_id, dataset_type_id, label, dataset_date in dataset_ids:
+                    update_dataset_status(cur, dataset_id, success, datasource_id, dataset_type_id, label, dataset_date, log_file, run_uuid, user, script_start_time)
+                conn.commit()
+                log_message(log_file, "Finalization", f"Updated dataset statuses for {len(dataset_ids)} datasets",
+                            run_uuid=run_uuid, stepcounter="Finalization_1", user=user, script_start_time=script_start_time)
+            except Exception as e:
+                log_message(log_file, "Error", f"Failed to update dataset statuses: {str(e)}\n{traceback.format_exc()}",
+                            run_uuid=run_uuid, stepcounter="Finalization_2", user=user, script_start_time=script_start_time)
 
     log_message(log_file, "Finalization", f"Completed processing for config_id {config_id}",
                 run_uuid=run_uuid, stepcounter="Finalization_0", user=user, script_start_time=script_start_time)
