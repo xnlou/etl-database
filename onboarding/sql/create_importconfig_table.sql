@@ -1,14 +1,14 @@
-GO
+
 -- Create the importstrategy table in the dba schema
-CREATE TABLE IF NOT EXISTS dba.importstrategy (
+CREATE TABLE IF NOT EXISTS dba.timportstrategy (
     importstrategyID SERIAL PRIMARY KEY,
     Name VARCHAR(100) NOT NULL UNIQUE
 );
 
 -- Add comments to importstrategy table and columns
-COMMENT ON TABLE dba.importstrategy IS 'Table defining import strategies for timportconfig, specifying how to handle column mismatches during data import.';
-COMMENT ON COLUMN dba.importstrategy.importstrategyID IS 'Unique identifier for the import strategy.';
-COMMENT ON COLUMN dba.importstrategy.Name IS 'Descriptive name of the import strategy (e.g., ''Import and create new columns if needed'').';
+COMMENT ON TABLE dba.timportstrategy IS 'Table defining import strategies for timportconfig, specifying how to handle column mismatches during data import.';
+COMMENT ON COLUMN dba.timportstrategy.importstrategyID IS 'Unique identifier for the import strategy.';
+COMMENT ON COLUMN dba.timportstrategy.Name IS 'Descriptive name of the import strategy (e.g., ''Import and create new columns if needed'').';
 
 -- Insert predefined import strategies
 INSERT INTO dba.importstrategy (importstrategyID, Name) VALUES
