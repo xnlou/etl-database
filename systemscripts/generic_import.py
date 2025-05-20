@@ -103,6 +103,8 @@ def table_exists(cursor, table_name):
         """, (schema, table))
         return cursor.fetchone()[0]
     except Exception as e:
+        log_message(log_file, "Error", f"Failed to check table existence for {table_name}: {str(e)}",
+                    run_uuid=run_uuid, stepcounter="TableCheck_0", user=user, script_start_time=script_start_time)
         return False
 
 def get_table_columns(cursor, table_name):
@@ -116,6 +118,8 @@ def get_table_columns(cursor, table_name):
         """, (table_name,))
         return [row[0] for row in cursor.fetchall()]
     except Exception as e:
+        log_message(log_file, "Error", f"Failed to get columns for {table_name}: {str(e)}",
+                    run_uuid=run_uuid, stepcounter="TableColumns_0", user=user, script_start_time=script_start_time)
         return []
 
 def get_column_lengths(df):
@@ -247,9 +251,14 @@ def load_data_to_postgres(df, target_table, dataset_id, metadata_label, event_da
                 # Get table columns
                 table_columns = get_table_columns(cur, target_table)
                 table_columns_lower = [col.lower() for col in table_columns]
+                log_message(log_file, "DataLoadPrep", f"Table columns for {target_table}: {', '.join(table_columns)}",
+                            run_uuid=run_uuid, stepcounter="DataLoadPrep_0", user=user, script_start_time=script_start_time)
                 
                 # Add datasetid, metadata, and date columns (primary key is handled by SERIAL)
                 df_columns = list(df.columns)
+                log_message(log_file, "DataLoadPrep", f"Source columns before processing: {', '.join(df_columns)}",
+                            run_uuid=run_uuid, stepcounter="DataLoadPrep_1", user=user, script_start_time=script_start_time)
+                
                 df["datasetid"] = dataset_id
                 if metadata_label and "metadata_label" in table_columns_lower:
                     df["metadata_label"] = metadata_label
@@ -272,10 +281,26 @@ def load_data_to_postgres(df, target_table, dataset_id, metadata_label, event_da
                                 run_uuid=run_uuid, stepcounter="DataLoad_2", user=user, script_start_time=script_start_time)
                     return False
                 
+                log_message(log_file, "DataLoadPrep", f"Matching columns after mapping: {', '.join(matching_columns)}",
+                            run_uuid=run_uuid, stepcounter="DataLoadPrep_2", user=user, script_start_time=script_start_time)
+                
                 df = df[matching_columns].rename(columns=column_mapping)
+                
+                # Check DataFrame state
+                if df.empty:
+                    log_message(log_file, "Error", f"DataFrame is empty after filtering for {target_table}",
+                                run_uuid=run_uuid, stepcounter="DataLoad_3", user=user, script_start_time=script_start_time)
+                    return False
+                
+                log_message(log_file, "DataLoadPrep", f"DataFrame rows: {len(df)}, columns: {', '.join(df.columns)}",
+                            run_uuid=run_uuid, stepcounter="DataLoadPrep_3", user=user, script_start_time=script_start_time)
                 
                 # Convert DataFrame to list of tuples
                 records = [tuple(row) for row in df.to_numpy()]
+                if not records:
+                    log_message(log_file, "Error", f"No records to insert into {target_table}",
+                                run_uuid=run_uuid, stepcounter="DataLoad_4", user=user, script_start_time=script_start_time)
+                    return False
                 
                 # Prepare insert query
                 placeholders = ",".join(["%s"] * len(df.columns))
@@ -285,6 +310,8 @@ def load_data_to_postgres(df, target_table, dataset_id, metadata_label, event_da
                 """
                 
                 # Execute insert
+                log_message(log_file, "DataLoadPrep", f"Executing INSERT query for {len(records)} records into {target_table}",
+                            run_uuid=run_uuid, stepcounter="DataLoadPrep_4", user=user, script_start_time=script_start_time)
                 cur.executemany(insert_query, records)
                 conn.commit()
                 log_message(log_file, "DataLoad", f"Loaded {len(records)} rows to {target_table} with columns: {', '.join(df.columns)}",
@@ -293,6 +320,10 @@ def load_data_to_postgres(df, target_table, dataset_id, metadata_label, event_da
     except psycopg2.Error as e:
         log_message(log_file, "Error", f"Database error loading to {target_table}: {str(e)}",
                     run_uuid=run_uuid, stepcounter="DataLoad_1", user=user, script_start_time=script_start_time)
+        return False
+    except Exception as e:
+        log_message(log_file, "Error", f"Unexpected error loading to {target_table}: {str(e)}",
+                    run_uuid=run_uuid, stepcounter="DataLoad_5", user=user, script_start_time=script_start_time)
         return False
 
 def generic_import(config_id):
