@@ -7,6 +7,8 @@ import time
 import pandas as pd
 import psycopg2
 from pathlib import Path
+# Add root directory to sys.path
+sys.path.append(str(Path(__file__).parent.parent))
 from datetime import datetime
 import csv
 import shutil
@@ -15,8 +17,7 @@ from systemscripts.log_utils import log_message
 from systemscripts.directory_management import ensure_directory_exists, LOG_DIR, FILE_WATCHER_DIR
 from systemscripts.xls_to_csv import xls_to_csv
 
-# Add root directory to sys.path
-sys.path.append(str(Path.home() / 'client_etl_workflow'))
+
 
 # Database connection parameters
 DB_PARAMS = {
