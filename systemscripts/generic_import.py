@@ -160,16 +160,41 @@ def generic_import(config_id):
     ensure_directory_exists(config["source_directory"])
     ensure_directory_exists(config["archive_directory"])
 
-    # Find matching files
-    file_pattern = os.path.join(config["source_directory"], config["file_pattern"])
-    files = glob.glob(file_pattern)
-    if not files:
-        log_message(log_file, "Warning", f"No files found matching {file_pattern}",
+    # Find matching files using regex pattern
+    files = []
+    try:
+        # Clean the pattern to handle potential SQL-escaped backslashes
+        regex_pattern = config["file_pattern"].replace('\\\\', '\\')
+        # Compile the regex pattern
+        pattern = re.compile(regex_pattern)
+        
+        # List all files in source_directory and filter with regex
+        all_files = os.listdir(config["source_directory"])
+        log_message(log_file, "FileSearch", f"Files in {config['source_directory']}: {', '.join(all_files)}",
                     run_uuid=run_uuid, stepcounter="FileSearch_0", user=user, script_start_time=script_start_time)
+        
+        for filename in all_files:
+            if pattern.match(filename):
+                full_path = os.path.join(config["source_directory"], filename)
+                if os.path.isfile(full_path):
+                    files.append(full_path)
+                    log_message(log_file, "FileSearch", f"Matched file: {filename}",
+                                run_uuid=run_uuid, stepcounter=f"FileSearch_Match_{filename}", user=user, script_start_time=script_start_time)
+            else:
+                log_message(log_file, "FileSearch", f"File {filename} does not match pattern {regex_pattern}",
+                            run_uuid=run_uuid, stepcounter=f"FileSearch_NoMatch_{filename}", user=user, script_start_time=script_start_time)
+        
+        if not files:
+            log_message(log_file, "Warning", f"No files found matching pattern {regex_pattern} in {config['source_directory']}",
+                        run_uuid=run_uuid, stepcounter="FileSearch_1", user=user, script_start_time=script_start_time)
+            return
+        
+        log_message(log_file, "Processing", f"Found {len(files)} files to process: {', '.join(os.path.basename(f) for f in files)}",
+                    run_uuid=run_uuid, stepcounter="FileSearch_2", user=user, script_start_time=script_start_time)
+    except re.error as e:
+        log_message(log_file, "Error", f"Invalid regex pattern {config['file_pattern']}: {str(e)}",
+                    run_uuid=run_uuid, stepcounter="FileSearch_3", user=user, script_start_time=script_start_time)
         return
-
-    log_message(log_file, "Processing", f"Found {len(files)} files to process",
-                run_uuid=run_uuid, stepcounter="FileSearch_1", user=user, script_start_time=script_start_time)
 
     for file_path in files:
         filename = os.path.basename(file_path)
