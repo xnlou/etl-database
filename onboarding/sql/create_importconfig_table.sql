@@ -1,30 +1,4 @@
--- Drop all existing versions of insert_timportconfig, update_timportconfig, pimportconfigI, and pimportconfigU procedures to eliminate duplicates
-DO $$
-DECLARE
-    proc_record RECORD;
-BEGIN
-    -- Drop all procedures named insert_timportconfig, update_timportconfig, pimportconfigI, or pimportconfigU in the dba schema
-    FOR proc_record IN (
-        SELECT nspname, proname, pg_proc.oid, 
-               pg_get_function_identity_arguments(pg_proc.oid) AS args
-        FROM pg_proc
-        JOIN pg_namespace ON pg_proc.pronamespace = pg_namespace.oid
-        WHERE nspname = 'dba'
-        AND proname IN ('insert_timportconfig', 'update_timportconfig', 'pimportconfigI', 'pimportconfigU')
-    ) LOOP
-        EXECUTE 'DROP PROCEDURE IF EXISTS dba.' || quote_ident(proc_record.proname) || '(' || proc_record.args || ') CASCADE';
-    END LOOP;
-    -- Additional fallback to drop any residual procedures with specific signatures
-    EXECUTE 'DROP PROCEDURE IF EXISTS dba.insert_timportconfig(VARCHAR, VARCHAR, VARCHAR, VARCHAR, VARCHAR, VARCHAR, VARCHAR, VARCHAR, VARCHAR, VARCHAR, VARCHAR, BIT, INT, INT) CASCADE';
-    EXECUTE 'DROP PROCEDURE IF EXISTS dba.update_timportconfig(INT, VARCHAR, VARCHAR, VARCHAR, VARCHAR, VARCHAR, VARCHAR, VARCHAR, VARCHAR, VARCHAR, VARCHAR, VARCHAR, BIT, INT, INT) CASCADE';
-    EXECUTE 'DROP PROCEDURE IF EXISTS dba.insert_timportconfig(VARCHAR, VARCHAR, VARCHAR, VARCHAR, VARCHAR, VARCHAR, VARCHAR, VARCHAR, VARCHAR, VARCHAR, BIT) CASCADE';
-    EXECUTE 'DROP PROCEDURE IF EXISTS dba.update_timportconfig(INT, VARCHAR, VARCHAR, VARCHAR, VARCHAR, VARCHAR, VARCHAR, VARCHAR, VARCHAR, VARCHAR, VARCHAR, BIT) CASCADE';
-    EXECUTE 'DROP PROCEDURE IF EXISTS dba.insert_timportconfig(VARCHAR, VARCHAR, VARCHAR, VARCHAR, VARCHAR, VARCHAR, VARCHAR, VARCHAR, BOOLEAN) CASCADE';
-    EXECUTE 'DROP PROCEDURE IF EXISTS dba.update_timportconfig(INT, VARCHAR, VARCHAR, VARCHAR, VARCHAR, VARCHAR, VARCHAR, VARCHAR, BOOLEAN) CASCADE';
-    EXECUTE 'DROP PROCEDURE IF EXISTS dba.pimportconfigI(VARCHAR, VARCHAR, VARCHAR, VARCHAR, VARCHAR, VARCHAR, VARCHAR, VARCHAR, VARCHAR, VARCHAR, VARCHAR, BIT, VARCHAR, VARCHAR) CASCADE';
-    EXECUTE 'DROP PROCEDURE IF EXISTS dba.pimportconfigU(INT, VARCHAR, VARCHAR, VARCHAR, VARCHAR, VARCHAR, VARCHAR, VARCHAR, VARCHAR, VARCHAR, VARCHAR, VARCHAR, BIT, VARCHAR, VARCHAR) CASCADE';
-END;
-$$;
+
 
 -- Creating the timportconfig table in the dba schema to manage flat file imports
 CREATE TABLE IF NOT EXISTS dba."timportconfig" (
@@ -104,40 +78,6 @@ COMMENT ON COLUMN dba."timportconfig".is_active IS 'Flag indicating whether the 
 COMMENT ON COLUMN dba."timportconfig".created_at IS 'Timestamp when the configuration was created.';
 COMMENT ON COLUMN dba."timportconfig".last_modified_at IS 'Timestamp when the configuration was last modified.';
 
--- Inserting example configuration for MeetMaxURLCheckImport
-INSERT INTO dba."timportconfig" (
-    config_name,
-    file_pattern,
-    source_directory,
-    archive_directory,
-    file_type,
-    metadata_label_source,
-    metadata_label_location,
-    DateConfig,
-    DateLocation,
-    delimiter,
-    target_table,
-    DataSource,
-    DataSetType,
-    is_active
-) VALUES
-(
-    'MeetMaxURLCheckImport',
-    '\d{8}T\d{6}_MeetMaxURLCheck\.csv',
-    '/home/etl_user/client_etl_workflow/file_watcher',
-    '/home/etl_user/client_etl_workflow/archive',
-    'CSV',
-    'filename',
-    '_([^_]+)',
-    'filename',
-    '\d{8}T\d{6}',
-    '_',
-    'dba.meetmax_url_data',
-    'MeetMax',
-    'URLCheck',
-    '1'
-) ON CONFLICT (config_name) DO NOTHING;
-
 -- Creating a stored procedure for inserting a new timportconfig row
 CREATE OR REPLACE PROCEDURE dba.pimportconfigI(
     p_config_name VARCHAR,
@@ -196,6 +136,32 @@ BEGIN
 END;
 $$;
 
+-- Inserting example configuration for MeetMaxURLCheckImport using the insert procedure
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM dba."timportconfig" WHERE config_name = 'MeetMaxURLCheckImport') THEN
+        CALL dba.pimportconfigI(
+            'MeetMaxURLCheckImport',
+            '\d{8}T\d{6}_MeetMaxURLCheck\.csv',
+            '/home/etl_user/client_etl_workflow/file_watcher',
+            '/home/etl_user/client_etl_workflow/archive',
+            'CSV',
+            'filename',
+            '_([^_]+)',
+            'filename',
+            '\d{8}T\d{6}',
+            '_',
+            'dba.meetmax_url_data',
+            'MeetMax',
+            'URLCheck',
+            '1'::BIT(1)
+        );
+    ELSE
+        RAISE NOTICE 'Configuration with config_name ''MeetMaxURLCheckImport'' already exists. Skipping insert.';
+    END IF;
+END;
+$$;
+
 -- Creating a stored procedure for updating an existing timportconfig row with partial updates
 CREATE OR REPLACE PROCEDURE dba.pimportconfigU(
     p_config_id INT,
@@ -245,60 +211,8 @@ EXCEPTION
 END;
 $$;
 
--- Example usage of stored procedures
--- Insert a new configuration, checking for existence
-DO $$
-BEGIN
-    IF NOT EXISTS (SELECT 1 FROM dba."timportconfig" WHERE config_name = 'NewConfig') THEN
-        CALL dba.pimportconfigI(
-            'NewConfig',
-            '*.csv',
-            '/home/etl_user/client_etl_workflow/file_watcher',
-            '/home/etl_user/client_etl_workflow/archive',
-            'CSV',
-            'static',
-            'CustomLabel2025',
-            'static',
-            '2025-05-16',
-            NULL,
-            'dba.custom_data',
-            'CustomSource',
-            'CustomType',
-            '1'::BIT(1)
-        );
-    ELSE
-        RAISE NOTICE 'Configuration with config_name ''NewConfig'' already exists. Skipping insert.';
-    END IF;
-END;
-$$;
 
--- Verify inserted data before updates
-DO $$
-BEGIN
-    IF NOT EXISTS (SELECT 1 FROM dba."timportconfig" WHERE config_id = 1) THEN
-        RAISE NOTICE 'No configuration with config_id 1 exists. Skipping update examples.';
-    ELSE
-        -- Update only the is_active field for an existing configuration
-        CALL dba.pimportconfigU(
-            p_config_id => 1,
-            p_is_active => '0'::BIT(1)
-        );
 
-        -- Update multiple fields, leaving others unchanged
-        CALL dba.pimportconfigU(
-            p_config_id => 1,
-            p_config_name => 'UpdatedMeetMaxURLCheckImport',
-            p_file_pattern => '\d{8}T\d{6}_MeetMaxURLCheckUpdated.*\.csv',
-            p_DateConfig => 'file_content',
-            p_DateLocation => 'UpdatedEventDate',
-            p_delimiter => '_venteDate',
-            p_DataSource => 'MeetMax',
-            p_DataSetType => 'URLCheck',
-            p_is_active => '1'::BIT(1)
-        );
-    END IF;
-END;
-$$;
 
 -- Conditionally grant permissions to etl_user
 DO $$
