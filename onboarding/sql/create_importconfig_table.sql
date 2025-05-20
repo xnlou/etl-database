@@ -143,9 +143,9 @@ BEGIN
         CALL dba.pimportconfigI(
             'MeetMaxURLCheckImport',
             'MeetMax',
-            'URLCheck',
-            '/home/etl_user/client_etl_workflow/file_watcher',
-            '/home/etl_user/client_etl_workflow/archive',
+            'MetaData',
+            '/home/yostfundsadmin/client_etl_workflow/file_watcher',
+            '/home/yostfundsadmin/client_etl_workflow/archive/import_MeetMaxURLCheckImport',
             '\d{8}T\d{6}_MeetMaxURLCheck\.csv',
             'CSV',
             'filename',
@@ -153,7 +153,7 @@ BEGIN
             'filename',
             '\d{8}T\d{6}',
             '_',
-            'dba.meetmax_url_data',
+            'public.tmeetmaxurlcheck',
             '1'::BIT(1)
         );
     ELSE
