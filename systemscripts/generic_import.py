@@ -126,39 +126,53 @@ def get_column_lengths(df):
         lengths[col] = max_length if not pd.isna(max_length) else 255
     return lengths
 
-def get_lookup_ids(cursor, datasource, dataset_type, log_file, run_uuid, user, script_start_time):
-    """Get DataSourceID and DataSetTypeID from lookup tables."""
+def ensure_lookup_ids(cursor, datasource, dataset_type, user, log_file, run_uuid, script_start_time):
+    """Ensure DataSource and DataSetType exist in tDataSource and tDataSetType, inserting if necessary."""
     try:
-        # Get DataSourceID
+        # Ensure DataSource exists
         cursor.execute("""
-            SELECT DataSourceID
-            FROM dba.tDataSource
-            WHERE SourceName = %s;
-        """, (datasource,))
-        datasource_id = cursor.fetchone()
-        if not datasource_id:
-            log_message(log_file, "Error", f"DataSource {datasource} not found in tDataSource",
-                        run_uuid=run_uuid, stepcounter="LookupFetch_0", user=user, script_start_time=script_start_time)
-            return None, None
-        datasource_id = datasource_id[0]
+            INSERT INTO dba.tDataSource (SourceName, CreatedDate, CreatedBy)
+            VALUES (%s, CURRENT_TIMESTAMP, %s)
+            ON CONFLICT (SourceName) DO NOTHING
+            RETURNING DataSourceID;
+        """, (datasource, user))
+        row = cursor.fetchone()
+        if row:
+            datasource_id = row[0]
+        else:
+            cursor.execute("""
+                SELECT DataSourceID
+                FROM dba.tDataSource
+                WHERE SourceName = %s;
+            """, (datasource,))
+            datasource_id = cursor.fetchone()[0]
+        log_message(log_file, "LookupInsert", f"Ensured DataSource {datasource} with DataSourceID {datasource_id}",
+                    run_uuid=run_uuid, stepcounter="LookupInsert_0", user=user, script_start_time=script_start_time)
 
-        # Get DataSetTypeID
+        # Ensure DataSetType exists
         cursor.execute("""
-            SELECT DataSetTypeID
-            FROM dba.tDataSetType
-            WHERE TypeName = %s;
-        """, (dataset_type,))
-        dataset_type_id = cursor.fetchone()
-        if not dataset_type_id:
-            log_message(log_file, "Error", f"DataSetType {dataset_type} not found in tDataSetType",
-                        run_uuid=run_uuid, stepcounter="LookupFetch_1", user=user, script_start_time=script_start_time)
-            return None, None
-        dataset_type_id = dataset_type_id[0]
+            INSERT INTO dba.tDataSetType (TypeName, CreatedDate, CreatedBy)
+            VALUES (%s, CURRENT_TIMESTAMP, %s)
+            ON CONFLICT (TypeName) DO NOTHING
+            RETURNING DataSetTypeID;
+        """, (dataset_type, user))
+        row = cursor.fetchone()
+        if row:
+            dataset_type_id = row[0]
+        else:
+            cursor.execute("""
+                SELECT DataSetTypeID
+                FROM dba.tDataSetType
+                WHERE TypeName = %s;
+            """, (dataset_type,))
+            dataset_type_id = cursor.fetchone()[0]
+        log_message(log_file, "LookupInsert", f"Ensured DataSetType {dataset_type} with DataSetTypeID {dataset_type_id}",
+                    run_uuid=run_uuid, stepcounter="LookupInsert_1", user=user, script_start_time=script_start_time)
 
         return datasource_id, dataset_type_id
     except psycopg2.Error as e:
-        log_message(log_file, "Error", f"Failed to fetch lookup IDs: {str(e)}",
-                    run_uuid=run_uuid, stepcounter="LookupFetch_2", user=user, script_start_time=script_start_time)
+        log_message(log_file, "Error", f"Failed to ensure lookup IDs: {str(e)}",
+                    run_uuid=run_uuid, stepcounter="LookupInsert_2", user=user, script_start_time=script_start_time)
         return None, None
 
 def insert_dataset(cursor, config_name, dataset_date, label, datasource_id, dataset_type_id, log_file, run_uuid, user, script_start_time):
@@ -356,12 +370,12 @@ def generic_import(config_id):
         if not label:
             label = config["config_name"]
 
-        # Get DataSourceID and DataSetTypeID
+        # Ensure DataSource and DataSetType exist and get their IDs
         with psycopg2.connect(**DB_PARAMS) as conn:
             with conn.cursor() as cur:
-                datasource_id, dataset_type_id = get_lookup_ids(cur, config["DataSource"], config["DataSetType"], log_file, run_uuid, user, script_start_time)
+                datasource_id, dataset_type_id = ensure_lookup_ids(cur, config["DataSource"], config["DataSetType"], user, log_file, run_uuid, script_start_time)
                 if not datasource_id or not dataset_type_id:
-                    log_message(log_file, "Error", f"Failed to fetch lookup IDs for file {filename}. Skipping.",
+                    log_message(log_file, "Error", f"Failed to ensure lookup IDs for file {filename}. Skipping.",
                                 run_uuid=run_uuid, stepcounter=f"File_{filename}_1", user=user, script_start_time=script_start_time)
                     success = False
                     continue
