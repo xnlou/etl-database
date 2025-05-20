@@ -11,7 +11,7 @@ COMMENT ON COLUMN dba.timportstrategy.importstrategyID IS 'Unique identifier for
 COMMENT ON COLUMN dba.timportstrategy.Name IS 'Descriptive name of the import strategy (e.g., ''Import and create new columns if needed'').';
 
 -- Insert predefined import strategies
-INSERT INTO dba.importstrategy (importstrategyID, Name) VALUES
+INSERT INTO dba.timportstrategy (importstrategyID, Name) VALUES
 (1, 'Import and create new columns if needed'),
 (2, 'Import only (ignores new columns)'),
 (3, 'Import or fail if columns are missing from source file')
@@ -61,7 +61,7 @@ CREATE TABLE IF NOT EXISTS dba."timportconfig" (
     -- Timestamp when the configuration was created
     last_modified_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     -- Timestamp when the configuration was last modified
-    CONSTRAINT fk_importstrategyID FOREIGN KEY (importstrategyID) REFERENCES dba.importstrategy(importstrategyID),
+    CONSTRAINT fk_importstrategyID FOREIGN KEY (importstrategyID) REFERENCES dba.timportstrategy(importstrategyID),
     CONSTRAINT valid_directories CHECK (
         source_directory != archive_directory
         AND source_directory ~ '^/.*[^/]$'
