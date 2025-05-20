@@ -1,4 +1,21 @@
+GO
+-- Create the importstrategy table in the dba schema
+CREATE TABLE IF NOT EXISTS dba.importstrategy (
+    importstrategyID SERIAL PRIMARY KEY,
+    Name VARCHAR(100) NOT NULL UNIQUE
+);
 
+-- Add comments to importstrategy table and columns
+COMMENT ON TABLE dba.importstrategy IS 'Table defining import strategies for timportconfig, specifying how to handle column mismatches during data import.';
+COMMENT ON COLUMN dba.importstrategy.importstrategyID IS 'Unique identifier for the import strategy.';
+COMMENT ON COLUMN dba.importstrategy.Name IS 'Descriptive name of the import strategy (e.g., ''Import and create new columns if needed'').';
+
+-- Insert predefined import strategies
+INSERT INTO dba.importstrategy (importstrategyID, Name) VALUES
+(1, 'Import and create new columns if needed'),
+(2, 'Import only (ignores new columns)'),
+(3, 'Import or fail if columns are missing from source file')
+ON CONFLICT (importstrategyID) DO NOTHING;
 
 -- Creating the timportconfig table in the dba schema to manage flat file imports
 CREATE TABLE IF NOT EXISTS dba."timportconfig" (
@@ -9,11 +26,11 @@ CREATE TABLE IF NOT EXISTS dba."timportconfig" (
     DataSource VARCHAR(100) NOT NULL,
     -- Descriptive name of the data source (e.g., 'MeetMax')
     DataSetType VARCHAR(100) NOT NULL,
-    -- Descriptive name of the dataset type (e.g., 'URLCheck')
+    -- Descriptive name of the dataset type (e.g., 'MetaData')
     source_directory VARCHAR(255) NOT NULL,
-    -- Directory where input files are located (e.g., '/home/etl_user/client_etl_workflow/file_watcher')
+    -- Directory where input files are located (e.g., '/home/yostfundsadmin/client_etl_workflow/file_watcher')
     archive_directory VARCHAR(255) NOT NULL,
-    -- Directory where files are moved after processing (e.g., '/home/etl_user/client_etl_workflow/archive')
+    -- Directory where files are moved after processing (e.g., '/home/yostfundsadmin/client_etl_workflow/archive/import_MeetMaxURLCheckImport')
     file_pattern VARCHAR(255) NOT NULL,
     -- Pattern to match files (e.g., '*.csv', '*MeetMax*.xls', regex: '\d{8}T\d{6}_MeetMax.*\.csv')
     file_type VARCHAR(10) NOT NULL CHECK (file_type IN ('CSV', 'XLS', 'XLSX')),
@@ -35,13 +52,16 @@ CREATE TABLE IF NOT EXISTS dba."timportconfig" (
     delimiter VARCHAR(10),
     -- Delimiter used for parsing filenames (e.g., '_'), NULL if not applicable
     target_table VARCHAR(100) NOT NULL,
-    -- Target database table for import (e.g., 'dba.meetmax_url_data')
+    -- Target database table for import (e.g., 'public.tmeetmaxurlcheck')
+    importstrategyID INT NOT NULL DEFAULT 1,
+    -- Foreign key to importstrategy table, defining how to handle column mismatches
     is_active BIT(1) DEFAULT '1',
     -- Flag to enable/disable the configuration (1 = active, 0 = inactive)
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     -- Timestamp when the configuration was created
     last_modified_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     -- Timestamp when the configuration was last modified
+    CONSTRAINT fk_importstrategyID FOREIGN KEY (importstrategyID) REFERENCES dba.importstrategy(importstrategyID),
     CONSTRAINT valid_directories CHECK (
         source_directory != archive_directory
         AND source_directory ~ '^/.*[^/]$'
@@ -57,13 +77,13 @@ CREATE TABLE IF NOT EXISTS dba."timportconfig" (
 );
 
 -- Adding a comment to describe the table
-COMMENT ON TABLE dba."timportconfig" IS 'Configuration table for importing flat files (CSV, XLS, XLSX) into the database, specifying file patterns, directories, metadata, date extraction rules, delimiter, and data source/type descriptions.';
+COMMENT ON TABLE dba."timportconfig" IS 'Configuration table for importing flat files (CSV, XLS, XLSX) into the database, specifying file patterns, directories, metadata, date extraction rules, delimiter, data source/type descriptions, and import strategy.';
 
 -- Adding comments to columns for clarity
 COMMENT ON COLUMN dba."timportconfig".config_id IS 'Unique identifier for the configuration.';
 COMMENT ON COLUMN dba."timportconfig".config_name IS 'Descriptive name of the configuration.';
 COMMENT ON COLUMN dba."timportconfig".DataSource IS 'Descriptive name of the data source (e.g., ''MeetMax'').';
-COMMENT ON COLUMN dba."timportconfig".DataSetType IS 'Descriptive name of the dataset type (e.g., ''URLCheck'').';
+COMMENT ON COLUMN dba."timportconfig".DataSetType IS 'Descriptive name of the dataset type (e.g., ''MetaData'').';
 COMMENT ON COLUMN dba."timportconfig".source_directory IS 'Absolute path to the directory containing input files.';
 COMMENT ON COLUMN dba."timportconfig".archive_directory IS 'Absolute path to the directory where files are archived after processing.';
 COMMENT ON COLUMN dba."timportconfig".file_pattern IS 'Pattern to match files (glob or regex, e.g., "*.csv" or "\d{8}T\d{6}_.*\.csv").';
@@ -74,6 +94,7 @@ COMMENT ON COLUMN dba."timportconfig".DateConfig IS 'Source of date metadata (fi
 COMMENT ON COLUMN dba."timportconfig".DateLocation IS 'Location details for date extraction (regex for filename, column name for file_content, fixed date for static).';
 COMMENT ON COLUMN dba."timportconfig".delimiter IS 'Delimiter used for parsing filenames (e.g., ''_'', NULL if not applicable).';
 COMMENT ON COLUMN dba."timportconfig".target_table IS 'Target database table for the imported data.';
+COMMENT ON COLUMN dba."timportconfig".importstrategyID IS 'Foreign key to importstrategy table, defining how to handle column mismatches (e.g., add new columns, ignore, or fail).';
 COMMENT ON COLUMN dba."timportconfig".is_active IS 'Flag indicating whether the configuration is active (1 = active, 0 = inactive).';
 COMMENT ON COLUMN dba."timportconfig".created_at IS 'Timestamp when the configuration was created.';
 COMMENT ON COLUMN dba."timportconfig".last_modified_at IS 'Timestamp when the configuration was last modified.';
@@ -93,6 +114,7 @@ CREATE OR REPLACE PROCEDURE dba.pimportconfigI(
     p_DateLocation VARCHAR,
     p_delimiter VARCHAR,
     p_target_table VARCHAR,
+    p_ImportStrategyID INT,
     p_is_active BIT(1)
 )
 LANGUAGE plpgsql
@@ -112,6 +134,7 @@ BEGIN
         DateLocation,
         delimiter,
         target_table,
+        ImportStrategyID,
         is_active,
         created_at,
         last_modified_at
@@ -129,6 +152,7 @@ BEGIN
         p_DateLocation,
         p_delimiter,
         p_target_table,
+        p_ImportStrategyID,
         p_is_active,
         CURRENT_TIMESTAMP,
         CURRENT_TIMESTAMP
@@ -154,6 +178,7 @@ BEGIN
             '\d{8}T\d{6}',
             '_',
             'public.tmeetmaxurlcheck',
+            1, -- Import and create new columns if needed
             '1'::BIT(1)
         );
     ELSE
@@ -178,6 +203,7 @@ CREATE OR REPLACE PROCEDURE dba.pimportconfigU(
     p_DateLocation VARCHAR DEFAULT NULL,
     p_delimiter VARCHAR DEFAULT NULL,
     p_target_table VARCHAR DEFAULT NULL,
+    p_ImportStrategyID INT DEFAULT NULL,
     p_is_active BIT(1) DEFAULT NULL
 )
 LANGUAGE plpgsql
@@ -198,6 +224,7 @@ BEGIN
         DateLocation = COALESCE(p_DateLocation, DateLocation),
         delimiter = COALESCE(p_delimiter, delimiter),
         target_table = COALESCE(p_target_table, target_table),
+        ImportStrategyID = COALESCE(p_ImportStrategyID, ImportStrategyID),
         is_active = COALESCE(p_is_active, is_active),
         last_modified_at = CURRENT_TIMESTAMP
     WHERE config_id = p_config_id;
@@ -210,7 +237,6 @@ EXCEPTION
         RAISE EXCEPTION 'Error updating configuration: %', SQLERRM;
 END;
 $$;
-
 
 -- Conditionally grant permissions to etl_user
 DO $$
@@ -244,6 +270,17 @@ BEGIN
         AND privilege_type = 'UPDATE'
     ) THEN
         REVOKE UPDATE ON dba."timportconfig" FROM PUBLIC;
+    END IF;
+
+    IF EXISTS (
+        SELECT 1
+        FROM information_schema.table_privileges
+        WHERE grantee = 'public'
+        AND table_schema = 'dba'
+        AND table_name = 'importstrategy'
+        AND privilege_type = 'UPDATE'
+    ) THEN
+        REVOKE UPDATE ON dba.importstrategy FROM PUBLIC;
     END IF;
 END;
 $$;
