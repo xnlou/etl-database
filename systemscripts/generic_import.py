@@ -114,7 +114,7 @@ def get_table_columns(cursor, table_name):
             WHERE table_schema || '.' || table_name = %s
             ORDER BY ordinal_position;
         """, (table_name,))
-        return [row[0] for row in cur.fetchall()]
+        return [row[0] for row in cursor.fetchall()]
     except Exception as e:
         return []
 
@@ -151,15 +151,32 @@ def load_data_to_postgres(df, target_table, metadata_label, event_date, log_file
             with conn.cursor() as cur:
                 # Get table columns
                 table_columns = get_table_columns(cur, target_table)
+                table_columns_lower = [col.lower() for col in table_columns]
                 
                 # Add metadata and date columns if configured
-                if metadata_label and "metadata_label" in table_columns:
+                if metadata_label and "metadata_label" in table_columns_lower:
                     df["metadata_label"] = metadata_label
-                if event_date and "event_date" in table_columns:
+                if event_date and "event_date" in table_columns_lower:
                     df["event_date"] = event_date
                 
-                # Filter DataFrame to match table columns
-                df = df[[col for col in df.columns if col in table_columns]]
+                # Filter DataFrame to match table columns (case-insensitive)
+                matching_columns = []
+                column_mapping = {}
+                for col in df.columns:
+                    col_lower = col.lower()
+                    for table_col in table_columns:
+                        if col_lower == table_col.lower():
+                            matching_columns.append(col)
+                            column_mapping[col] = table_col
+                            break
+                
+                if not matching_columns:
+                    log_message(log_file, "Error", f"No matching columns between source ({', '.join(df.columns)}) and table ({', '.join(table_columns)})",
+                                run_uuid=run_uuid, stepcounter="DataLoad_2", user=user, script_start_time=script_start_time)
+                    return False
+                
+                # Rename DataFrame columns to match table columns exactly
+                df = df[matching_columns].rename(columns=column_mapping)
                 
                 # Convert DataFrame to list of tuples
                 records = [tuple(row) for row in df.to_numpy()]
@@ -167,14 +184,14 @@ def load_data_to_postgres(df, target_table, metadata_label, event_date, log_file
                 # Prepare insert query
                 placeholders = ",".join(["%s"] * len(df.columns))
                 insert_query = f"""
-                    INSERT INTO {target_table} ({','.join(df.columns)})
+                    INSERT INTO {target_table} ({','.join(f'"{col}"' for col in df.columns)})
                     VALUES ({placeholders})
                 """
                 
                 # Execute insert
                 cur.executemany(insert_query, records)
                 conn.commit()
-                log_message(log_file, "DataLoad", f"Loaded {len(records)} rows to {target_table}",
+                log_message(log_file, "DataLoad", f"Loaded {len(records)} rows to {target_table} with columns: {', '.join(df.columns)}",
                             run_uuid=run_uuid, stepcounter="DataLoad_0", user=user, script_start_time=script_start_time)
                 return True
     except psycopg2.Error as e:
@@ -313,7 +330,7 @@ def generic_import(config_id):
                                         run_uuid=run_uuid, stepcounter="SchemaCreate_1", user=user, script_start_time=script_start_time)
                             continue
                     else:
-                        log_message(log_file, "Error", f"Table {config['target_table']} does not exist and ImportStrategy {config['ImportStrategy']} does not allow creation",
+                        log_message(log_file, "Error", f"Table {config['target_table']} does not exist and importstrategyid {config['importstrategyid']} does not allow creation",
                                     run_uuid=run_uuid, stepcounter="SchemaCheck_0", user=user, script_start_time=script_start_time)
                         continue
 
@@ -355,7 +372,7 @@ def generic_import(config_id):
                 if load_data_to_postgres(df, config["target_table"], metadata_label, event_date,
                                         log_file, run_uuid, user, script_start_time):
                     # Move file to archive
-                    archive_path = os.path.join(config["archive_directory"], filename)
+                    archive_path = os.path.join(config["target_table"], filename)
                     try:
                         shutil.move(file_path, archive_path)
                         os.chmod(archive_path, 0o660)
