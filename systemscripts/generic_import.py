@@ -126,14 +126,49 @@ def get_column_lengths(df):
         lengths[col] = max_length if not pd.isna(max_length) else 255
     return lengths
 
-def insert_dataset(cursor, config_name, dataset_date, label, log_file, run_uuid, user, script_start_time):
+def get_lookup_ids(cursor, datasource, dataset_type, log_file, run_uuid, user, script_start_time):
+    """Get DataSourceID and DataSetTypeID from lookup tables."""
+    try:
+        # Get DataSourceID
+        cursor.execute("""
+            SELECT DataSourceID
+            FROM dba.tDataSource
+            WHERE SourceName = %s;
+        """, (datasource,))
+        datasource_id = cursor.fetchone()
+        if not datasource_id:
+            log_message(log_file, "Error", f"DataSource {datasource} not found in tDataSource",
+                        run_uuid=run_uuid, stepcounter="LookupFetch_0", user=user, script_start_time=script_start_time)
+            return None, None
+        datasource_id = datasource_id[0]
+
+        # Get DataSetTypeID
+        cursor.execute("""
+            SELECT DataSetTypeID
+            FROM dba.tDataSetType
+            WHERE TypeName = %s;
+        """, (dataset_type,))
+        dataset_type_id = cursor.fetchone()
+        if not dataset_type_id:
+            log_message(log_file, "Error", f"DataSetType {dataset_type} not found in tDataSetType",
+                        run_uuid=run_uuid, stepcounter="LookupFetch_1", user=user, script_start_time=script_start_time)
+            return None, None
+        dataset_type_id = dataset_type_id[0]
+
+        return datasource_id, dataset_type_id
+    except psycopg2.Error as e:
+        log_message(log_file, "Error", f"Failed to fetch lookup IDs: {str(e)}",
+                    run_uuid=run_uuid, stepcounter="LookupFetch_2", user=user, script_start_time=script_start_time)
+        return None, None
+
+def insert_dataset(cursor, config_name, dataset_date, label, datasource_id, dataset_type_id, log_file, run_uuid, user, script_start_time):
     """Insert a new dataset into tDataSet and return its ID."""
     try:
         cursor.execute("""
             INSERT INTO dba.tDataSet (DataSetDate, Label, DataSetTypeID, DataSourceID, DataStatusID, IsActive, CreatedDate, CreatedBy)
-            VALUES (%s, %s, 1, 1, 2, FALSE, CURRENT_TIMESTAMP, %s)
+            VALUES (%s, %s, %s, %s, 2, FALSE, CURRENT_TIMESTAMP, %s)
             RETURNING DataSetID;
-        """, (dataset_date, label, user))
+        """, (dataset_date, label, dataset_type_id, datasource_id, user))
         dataset_id = cursor.fetchone()[0]
         log_message(log_file, "DatasetInsert", f"Inserted dataset {config_name} with DataSetID {dataset_id}",
                     run_uuid=run_uuid, stepcounter="DatasetInsert_0", user=user, script_start_time=script_start_time)
@@ -143,9 +178,24 @@ def insert_dataset(cursor, config_name, dataset_date, label, log_file, run_uuid,
                     run_uuid=run_uuid, stepcounter="DatasetInsert_1", user=user, script_start_time=script_start_time)
         return None
 
-def update_dataset_status(cursor, dataset_id, is_active, log_file, run_uuid, user, script_start_time):
-    """Update the IsActive status and DataStatusID of a dataset."""
+def update_dataset_status(cursor, dataset_id, is_active, datasource_id, dataset_type_id, label, dataset_date, log_file, run_uuid, user, script_start_time):
+    """Update the IsActive status and DataStatusID of a dataset, deactivating others with same DataSourceID, DataSetTypeID, Label, and DataSetDate."""
     try:
+        # Deactivate existing active datasets
+        cursor.execute("""
+            UPDATE dba.tDataSet
+            SET IsActive = FALSE, DataStatusID = 2, EffThruDate = CURRENT_TIMESTAMP
+            WHERE DataSourceID = %s
+              AND DataSetTypeID = %s
+              AND Label = %s
+              AND DataSetDate = %s
+              AND DataSetID != %s
+              AND IsActive = TRUE;
+        """, (datasource_id, dataset_type_id, label, dataset_date, dataset_id))
+        log_message(log_file, "DatasetUpdate", f"Deactivated other datasets for DataSourceID={datasource_id}, DataSetTypeID={dataset_type_id}, Label={label}, DataSetDate={dataset_date}",
+                    run_uuid=run_uuid, stepcounter="DatasetUpdate_1", user=user, script_start_time=script_start_time)
+
+        # Update the current dataset
         status_id = 1 if is_active else 2  # 1 = Active, 2 = Inactive
         cursor.execute("""
             UPDATE dba.tDataSet
@@ -156,7 +206,7 @@ def update_dataset_status(cursor, dataset_id, is_active, log_file, run_uuid, use
                     run_uuid=run_uuid, stepcounter="DatasetUpdate_0", user=user, script_start_time=script_start_time)
     except psycopg2.Error as e:
         log_message(log_file, "Error", f"Failed to update DataSetID {dataset_id}: {str(e)}",
-                    run_uuid=run_uuid, stepcounter="DatasetUpdate_1", user=user, script_start_time=script_start_time)
+                    run_uuid=run_uuid, stepcounter="DatasetUpdate_2", user=user, script_start_time=script_start_time)
 
 def add_columns_to_table(cursor, table_name, new_columns, column_lengths, log_file, run_uuid, user, script_start_time):
     """Add new columns to the target table with appropriate VARCHAR length."""
@@ -306,16 +356,24 @@ def generic_import(config_id):
         if not label:
             label = config["config_name"]
 
-        # Insert dataset record
+        # Get DataSourceID and DataSetTypeID
         with psycopg2.connect(**DB_PARAMS) as conn:
             with conn.cursor() as cur:
-                dataset_id = insert_dataset(cur, config["config_name"], dataset_date, label, log_file, run_uuid, user, script_start_time)
-                if not dataset_id:
-                    log_message(log_file, "Error", f"Failed to create dataset for file {filename}. Skipping.",
+                datasource_id, dataset_type_id = get_lookup_ids(cur, config["DataSource"], config["DataSetType"], log_file, run_uuid, user, script_start_time)
+                if not datasource_id or not dataset_type_id:
+                    log_message(log_file, "Error", f"Failed to fetch lookup IDs for file {filename}. Skipping.",
                                 run_uuid=run_uuid, stepcounter=f"File_{filename}_1", user=user, script_start_time=script_start_time)
                     success = False
                     continue
-                dataset_ids.append(dataset_id)
+
+                # Insert dataset record
+                dataset_id = insert_dataset(cur, config["config_name"], dataset_date, label, datasource_id, dataset_type_id, log_file, run_uuid, user, script_start_time)
+                if not dataset_id:
+                    log_message(log_file, "Error", f"Failed to create dataset for file {filename}. Skipping.",
+                                run_uuid=run_uuid, stepcounter=f"File_{filename}_2", user=user, script_start_time=script_start_time)
+                    success = False
+                    continue
+                dataset_ids.append((dataset_id, datasource_id, dataset_type_id, label, dataset_date))
                 conn.commit()
 
         # Convert XLS/XLSX to CSV if needed
@@ -326,14 +384,14 @@ def generic_import(config_id):
                 xls_to_csv(file_path)
                 if not os.path.exists(csv_path):
                     log_message(log_file, "Error", f"Failed to convert {filename} to CSV",
-                                run_uuid=run_uuid, stepcounter=f"File_{filename}_2", user=user, script_start_time=script_start_time)
+                                run_uuid=run_uuid, stepcounter=f"File_{filename}_3", user=user, script_start_time=script_start_time)
                     success = False
                     continue
                 log_message(log_file, "Conversion", f"Converted {filename} to {csv_path}",
-                            run_uuid=run_uuid, stepcounter=f"File_{filename}_3", user=user, script_start_time=script_start_time)
+                            run_uuid=run_uuid, stepcounter=f"File_{filename}_4", user=user, script_start_time=script_start_time)
             except Exception as e:
                 log_message(log_file, "Error", f"Conversion error for {filename}: {str(e)}",
-                            run_uuid=run_uuid, stepcounter=f"File_{filename}_4", user=user, script_start_time=script_start_time)
+                            run_uuid=run_uuid, stepcounter=f"File_{filename}_5", user=user, script_start_time=script_start_time)
                 success = False
                 continue
 
@@ -341,10 +399,10 @@ def generic_import(config_id):
         try:
             df = pd.read_csv(csv_path)
             log_message(log_file, "Processing", f"Read {len(df)} rows from {csv_path} with columns: {', '.join(df.columns)}",
-                        run_uuid=run_uuid, stepcounter=f"File_{filename}_5", user=user, script_start_time=script_start_time)
+                        run_uuid=run_uuid, stepcounter=f"File_{filename}_6", user=user, script_start_time=script_start_time)
         except Exception as e:
             log_message(log_file, "Error", f"Failed to read CSV {csv_path}: {str(e)}",
-                        run_uuid=run_uuid, stepcounter=f"File_{filename}_6", user=user, script_start_time=script_start_time)
+                        run_uuid=run_uuid, stepcounter=f"File_{filename}_7", user=user, script_start_time=script_start_time)
             success = False
             if csv_path != file_path and os.path.exists(csv_path):
                 os.remove(csv_path)
@@ -455,8 +513,8 @@ def generic_import(config_id):
     # Update dataset status for all processed datasets
     with psycopg2.connect(**DB_PARAMS) as conn:
         with conn.cursor() as cur:
-            for dataset_id in dataset_ids:
-                update_dataset_status(cur, dataset_id, success, log_file, run_uuid, user, script_start_time)
+            for dataset_id, datasource_id, dataset_type_id, label, dataset_date in dataset_ids:
+                update_dataset_status(cur, dataset_id, success, datasource_id, dataset_type_id, label, dataset_date, log_file, run_uuid, user, script_start_time)
             conn.commit()
 
     log_message(log_file, "Finalization", f"Completed processing for config_id {config_id}",
