@@ -27,6 +27,22 @@ DB_PARAMS = {
     "host": "localhost"
 }
 
+def log_to_tlogentry(config_id, message, stepcounter, log_file, run_uuid, user, script_start_time):
+    """Insert a log entry into dba.tlogentry."""
+    try:
+        with psycopg2.connect(**DB_PARAMS) as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    INSERT INTO dba.tlogentry (timestamp, run_uuid, process_type, stepcounter, user_name, message)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                """, (datetime.now(), run_uuid, 'Import', stepcounter, user, message))
+                conn.commit()
+                log_message(log_file, "Logentry", f"Logged to tlogentry: stepcounter={stepcounter}, message={message}",
+                            run_uuid=run_uuid, stepcounter="Logentry_Insert", user=user, script_start_time=script_start_time)
+    except psycopg2.Error as e:
+        log_message(log_file, "Error", f"Failed to log to tlogentry: {str(e)}\n{traceback.format_exc()}",
+                    run_uuid=run_uuid, stepcounter="Logentry_Error", user=user, script_start_time=script_start_time)
+
 def get_config(config_id, log_file, run_uuid, user, script_start_time):
     """Retrieve import configuration from timportconfig table."""
     try:
@@ -322,7 +338,7 @@ def load_data_to_postgres(df, target_table, dataset_id, metadata_label, event_da
         return False
 
 def generic_import(config_id):
-    """Generic import script to process files based on timportconfig, creating one dataset with status updates."""
+    """Generic import script to process files based on timportconfig, creating one dataset only with valid data."""
     script_start_time = time.time()
     run_uuid = str(uuid.uuid4())
     user = get_username()
@@ -335,16 +351,31 @@ def generic_import(config_id):
                     run_uuid=run_uuid, stepcounter="Initialization_0", user=user, script_start_time=script_start_time)
     except Exception as e:
         print(f"Error initializing log directory: {str(e)}")
+        log_to_tlogentry(config_id, f"Failed: Error initializing log directory: {str(e)}",
+                         "Initialization_0", log_file, run_uuid, user, script_start_time)
         sys.exit(1)
 
     config = get_config(config_id, log_file, run_uuid, user, script_start_time)
     if not config:
         log_message(log_file, "Error", "Failed to retrieve configuration. Exiting.",
                     run_uuid=run_uuid, stepcounter="Initialization_1", user=user, script_start_time=script_start_time)
-        return
+        log_to_tlogentry(config_id, "Failed: No active configuration found for config_id",
+                         "Initialization_1", log_file, run_uuid, user, script_start_time)
+        sys.exit(1)
 
     log_message(log_file, "Initialization", f"Configuration loaded: {config['config_name']}",
                 run_uuid=run_uuid, stepcounter="Initialization_2", user=user, script_start_time=script_start_time)
+
+    # Validate configuration before proceeding
+    required_fields = ['source_directory', 'archive_directory', 'file_pattern', 'file_type', 'target_table']
+    missing_fields = [field for field in required_fields if not config.get(field)]
+    if missing_fields:
+        error_msg = f"Failed: Missing required configuration fields: {', '.join(missing_fields)}"
+        log_message(log_file, "Error", error_msg,
+                    run_uuid=run_uuid, stepcounter="Initialization_3", user=user, script_start_time=script_start_time)
+        log_to_tlogentry(config_id, error_msg,
+                         "Initialization_3", log_file, run_uuid, user, script_start_time)
+        sys.exit(1)
 
     # Parse dataset date from the first file before creating the dataset
     dataset_date = datetime.now().date()  # Default, will be overridden if parsed
@@ -364,29 +395,46 @@ def generic_import(config_id):
                     log_message(log_file, "FileSearch", f"Matched file: {filename}",
                                 run_uuid=run_uuid, stepcounter=f"FileSearch_Match_{filename}", user=user, script_start_time=script_start_time)
         
-        # Parse date from the first file if available
-        if config["DateConfig"] == "filename" and files:
-            first_filename = os.path.basename(files[0])
-            log_message(log_file, "Debug", f"Attempting to parse date from filename '{first_filename}' with DateLocation {config['DateLocation']} and DateFormat {config['DateFormat']}",
-                        run_uuid=run_uuid, stepcounter="Initialization_3", user=user, script_start_time=script_start_time)
-            parsed_date = parse_metadata(first_filename, config, config["DateConfig"], config["DateLocation"],
-                                        config["delimiter"], log_file, run_uuid, user, script_start_time,
-                                        date_format=config["DateFormat"])
-            if parsed_date:
-                dataset_date = parsed_date
-                log_message(log_file, "Info", f"Parsed dataset_date {dataset_date} from filename '{first_filename}'",
-                            run_uuid=run_uuid, stepcounter="Initialization_4", user=user, script_start_time=script_start_time)
-            else:
-                log_message(log_file, "Error", f"Failed to parse date from filename '{first_filename}'",
-                            run_uuid=run_uuid, stepcounter="Initialization_5", user=user, script_start_time=script_start_time)
-    except re.error as e:
-        log_message(log_file, "Error", f"Invalid regex pattern {config['file_pattern']}: {str(e)}",
-                    run_uuid=run_uuid, stepcounter="FileSearch_1", user=user, script_start_time=script_start_time)
-        return
-    except Exception as e:
-        log_message(log_file, "Error", f"Unexpected error in file search: {str(e)}\n{traceback.format_exc()}",
+        if not files:
+            error_msg = f"Failed: No files found matching pattern {regex_pattern} in {config['source_directory']}"
+            log_message(log_file, "Error", error_msg,
+                        run_uuid=run_uuid, stepcounter="FileSearch_1", user=user, script_start_time=script_start_time)
+            log_to_tlogentry(config_id, error_msg,
+                             "FileSearch_1", log_file, run_uuid, user, script_start_time)
+            sys.exit(1)
+
+        # Parse date from the first file
+        first_filename = os.path.basename(files[0])
+        log_message(log_file, "Debug", f"Attempting to parse date from filename '{first_filename}' with DateLocation {config['DateLocation']} and DateFormat {config['DateFormat']}",
                     run_uuid=run_uuid, stepcounter="FileSearch_2", user=user, script_start_time=script_start_time)
-        return
+        parsed_date = parse_metadata(first_filename, config, config["DateConfig"], config["DateLocation"],
+                                    config["delimiter"], log_file, run_uuid, user, script_start_time,
+                                    date_format=config["DateFormat"])
+        if parsed_date:
+            dataset_date = parsed_date
+            log_message(log_file, "Info", f"Parsed dataset_date {dataset_date} from filename '{first_filename}'",
+                        run_uuid=run_uuid, stepcounter="FileSearch_3", user=user, script_start_time=script_start_time)
+        else:
+            error_msg = f"Failed: Failed to parse date from filename '{first_filename}'"
+            log_message(log_file, "Error", error_msg,
+                        run_uuid=run_uuid, stepcounter="FileSearch_4", user=user, script_start_time=script_start_time)
+            log_to_tlogentry(config_id, error_msg,
+                             "FileSearch_4", log_file, run_uuid, user, script_start_time)
+            sys.exit(1)
+    except re.error as e:
+        error_msg = f"Failed: Invalid regex pattern {config['file_pattern']}: {str(e)}"
+        log_message(log_file, "Error", error_msg,
+                    run_uuid=run_uuid, stepcounter="FileSearch_5", user=user, script_start_time=script_start_time)
+        log_to_tlogentry(config_id, error_msg,
+                         "FileSearch_5", log_file, run_uuid, user, script_start_time)
+        sys.exit(1)
+    except Exception as e:
+        error_msg = f"Failed: Unexpected error in file search: {str(e)}\n{traceback.format_exc()}"
+        log_message(log_file, "Error", error_msg,
+                    run_uuid=run_uuid, stepcounter="FileSearch_6", user=user, script_start_time=script_start_time)
+        log_to_tlogentry(config_id, error_msg,
+                         "FileSearch_6", log_file, run_uuid, user, script_start_time)
+        sys.exit(1)
 
     # Create a single dataset with 'New' status using the parsed date
     dataset_id = None
@@ -399,7 +447,7 @@ def generic_import(config_id):
         with psycopg2.connect(**DB_PARAMS) as conn:
             with conn.cursor() as cur:
                 log_message(log_file, "Debug", f"Creating dataset with date {dataset_date}",
-                            run_uuid=run_uuid, stepcounter="Initialization_6", user=user, script_start_time=script_start_time)
+                            run_uuid=run_uuid, stepcounter="Initialization_1", user=user, script_start_time=script_start_time)
                 cur.execute("SELECT dba.f_dataset_iu(%s, %s, %s, %s, %s, %s, %s)",
                             (None, dataset_date, config["DataSetType"], config["DataSource"], label, 'New', user))
                 dataset_id = cur.fetchone()[0]
@@ -408,30 +456,17 @@ def generic_import(config_id):
                 cur.execute("SELECT datasetdate FROM dba.tdataset WHERE datasetid = %s", (dataset_id,))
                 created_date = cur.fetchone()[0]
                 log_message(log_file, "DatasetInsert", f"Created dataset with ID {dataset_id} and status 'New' with label '{label}' and date {created_date}",
-                            run_uuid=run_uuid, stepcounter="Initialization_7", user=user, script_start_time=script_start_time)
+                            run_uuid=run_uuid, stepcounter="Initialization_2", user=user, script_start_time=script_start_time)
     except psycopg2.Error as e:
-        log_message(log_file, "Error", f"Failed to create dataset: {str(e)}\n{traceback.format_exc()}",
-                    run_uuid=run_uuid, stepcounter="Initialization_8", user=user, script_start_time=script_start_time)
-        return
-
-    if not files:
-        log_message(log_file, "Warning", f"No files found matching pattern {regex_pattern} in {config['source_directory']}",
-                    run_uuid=run_uuid, stepcounter="FileSearch_3", user=user, script_start_time=script_start_time)
-        try:
-            with psycopg2.connect(**DB_PARAMS) as conn:
-                with conn.cursor() as cur:
-                    cur.execute("SELECT dba.f_dataset_iu(%s, %s, %s, %s, %s, %s, %s)",
-                                (dataset_id, dataset_date, config["DataSetType"], config["DataSource"], label, 'Inactive', user))
-                    conn.commit()
-                    log_message(log_file, "DatasetUpdate", f"Updated dataset {dataset_id} to status 'Inactive' due to no files found",
-                                run_uuid=run_uuid, stepcounter="FileSearch_4", user=user, script_start_time=script_start_time)
-        except psycopg2.Error as e:
-            log_message(log_file, "Error", f"Failed to update dataset {dataset_id} to 'Inactive': {str(e)}\n{traceback.format_exc()}",
-                        run_uuid=run_uuid, stepcounter="FileSearch_5", user=user, script_start_time=script_start_time)
-        return
+        error_msg = f"Failed: Failed to create dataset: {str(e)}\n{traceback.format_exc()}"
+        log_message(log_file, "Error", error_msg,
+                    run_uuid=run_uuid, stepcounter="Initialization_3", user=user, script_start_time=script_start_time)
+        log_to_tlogentry(config_id, error_msg,
+                         "Initialization_3", log_file, run_uuid, user, script_start_time)
+        sys.exit(1)
 
     log_message(log_file, "Processing", f"Found {len(files)} files to process: {', '.join(os.path.basename(f) for f in files)}",
-                run_uuid=run_uuid, stepcounter="FileSearch_6", user=user, script_start_time=script_start_time)
+                run_uuid=run_uuid, stepcounter="FileSearch_7", user=user, script_start_time=script_start_time)
 
     ensure_directory_exists(config["source_directory"])
     ensure_directory_exists(config["archive_directory"])
@@ -604,8 +639,22 @@ def generic_import(config_id):
                                         run_uuid=run_uuid, stepcounter=f"File_{filename}_21", user=user, script_start_time=script_start_time)
                             # Removing temporary CSV is non-critical
 
+        # Update dataset status to 'Failed' if file processing failed
+        if not file_success:
+            try:
+                with psycopg2.connect(**DB_PARAMS) as conn:
+                    with conn.cursor() as cur:
+                        cur.execute("SELECT dba.f_dataset_iu(%s, %s, %s, %s, %s, %s, %s)",
+                                    (dataset_id, dataset_date, config["DataSetType"], config["DataSource"], label, 'Failed', user))
+                        conn.commit()
+                        log_message(log_file, "DatasetUpdate", f"Updated dataset {dataset_id} to status 'Failed' due to processing error",
+                                    run_uuid=run_uuid, stepcounter=f"File_{filename}_18", user=user, script_start_time=script_start_time)
+            except psycopg2.Error as e:
+                log_message(log_file, "Error", f"Failed to update dataset {dataset_id} to 'Failed': {str(e)}\n{traceback.format_exc()}",
+                            run_uuid=run_uuid, stepcounter=f"File_{filename}_19", user=user, script_start_time=script_start_time)
+
     # Update dataset status based on overall success
-    final_status = 'Active' if success else 'Inactive'
+    final_status = 'Active' if success else 'Failed'
     log_message(log_file, "Debug", f"Setting final status for dataset {dataset_id} to '{final_status}' with success={success} and dataset_date {dataset_date}",
                 run_uuid=run_uuid, stepcounter="Finalization_1", user=user, script_start_time=script_start_time)
     try:
@@ -639,6 +688,8 @@ def generic_import(config_id):
 if __name__ == "__main__":
     if len(sys.argv) != 2:
         print("Usage: python generic_import.py <config_id>")
+        log_to_tlogentry(0, "Failed: Invalid arguments: Usage: python generic_import.py <config_id>",
+                         "Main_0", "generic_import.log", str(uuid.uuid4()), "unknown", time.time())
         sys.exit(1)
     config_id = int(sys.argv[1])
     generic_import(config_id)
