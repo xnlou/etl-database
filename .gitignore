@@ -8,3 +8,4 @@ file_watcher/file_watcher_temp/*.csv
 file_watcher/file_watcher_temp/*.xls
 systemscripts/*.pyc
 systemscripts/__pycache__/
+archive/
