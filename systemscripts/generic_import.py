@@ -6,6 +6,7 @@ import uuid
 import time
 import pandas as pd
 import psycopg2
+from psycopg2 import sql
 from pathlib import Path
 # Add root directory to sys.path
 sys.path.append(str(Path(__file__).parent.parent))
@@ -88,10 +89,10 @@ def parse_metadata(filename, config, field_source, field_location, delimiter, lo
     elif field_source == "static":
         return field_location
     elif field_source == "file_content":
-        return field_location  # Will be handled during data loading
+        return field_location
     return None
 
-def table_exists(cursor, table_name):
+def table_exists(cursor, table_name, log_file, run_uuid, user, script_start_time):
     """Check if a table exists in the database."""
     try:
         schema, table = table_name.split('.')
@@ -102,13 +103,16 @@ def table_exists(cursor, table_name):
                 WHERE table_schema = %s AND table_name = %s
             );
         """, (schema, table))
-        return cursor.fetchone()[0]
+        exists = cursor.fetchone()[0]
+        log_message(log_file, "TableCheck", f"Table {table_name} exists: {exists}",
+                    run_uuid=run_uuid, stepcounter="TableCheck_0", user=user, script_start_time=script_start_time)
+        return exists
     except Exception as e:
         log_message(log_file, "Error", f"Failed to check table existence for {table_name}: {str(e)}",
-                    run_uuid=run_uuid, stepcounter="TableCheck_0", user=user, script_start_time=script_start_time)
+                    run_uuid=run_uuid, stepcounter="TableCheck_1", user=user, script_start_time=script_start_time)
         return False
 
-def get_table_columns(cursor, table_name):
+def get_table_columns(cursor, table_name, log_file, run_uuid, user, script_start_time):
     """Get the columns of a table."""
     try:
         cursor.execute("""
@@ -117,10 +121,13 @@ def get_table_columns(cursor, table_name):
             WHERE table_schema || '.' || table_name = %s
             ORDER BY ordinal_position;
         """, (table_name,))
-        return [row[0] for row in cursor.fetchall()]
+        columns = [row[0] for row in cursor.fetchall()]
+        log_message(log_file, "TableColumns", f"Columns for {table_name}: {', '.join(columns)}",
+                    run_uuid=run_uuid, stepcounter="TableColumns_0", user=user, script_start_time=script_start_time)
+        return columns
     except Exception as e:
         log_message(log_file, "Error", f"Failed to get columns for {table_name}: {str(e)}",
-                    run_uuid=run_uuid, stepcounter="TableColumns_0", user=user, script_start_time=script_start_time)
+                    run_uuid=run_uuid, stepcounter="TableColumns_1", user=user, script_start_time=script_start_time)
         return []
 
 def get_column_lengths(df):
@@ -136,19 +143,19 @@ def ensure_lookup_ids(cursor, datasource, dataset_type, user, log_file, run_uuid
     try:
         # Ensure DataSource exists
         cursor.execute("""
-            INSERT INTO dba.tDataSource (SourceName, CreatedDate, CreatedBy)
+            INSERT INTO dba.tDataSource (sourcename,createddate, CreatedBy)
             VALUES (%s, CURRENT_TIMESTAMP, %s)
-            ON CONFLICT (SourceName) DO NOTHING
-            RETURNING DataSourceID;
+            ON CONFLICT (sourcename) DO NOTHING
+            RETURNING dataSourceid;
         """, (datasource, user))
         row = cursor.fetchone()
         if row:
             datasource_id = row[0]
         else:
             cursor.execute("""
-                SELECT DataSourceID
+                SELECT dataSourceid
                 FROM dba.tDataSource
-                WHERE SourceName = %s;
+                WHERE sourcename = %s;
             """, (datasource,))
             datasource_id = cursor.fetchone()[0]
         log_message(log_file, "LookupInsert", f"Ensured DataSource {datasource} with DataSourceID {datasource_id}",
@@ -156,19 +163,19 @@ def ensure_lookup_ids(cursor, datasource, dataset_type, user, log_file, run_uuid
 
         # Ensure DataSetType exists
         cursor.execute("""
-            INSERT INTO dba.tDataSetType (TypeName, CreatedDate, CreatedBy)
+            INSERT INTO dba.tDataSetType (typename,createddate, createdby)
             VALUES (%s, CURRENT_TIMESTAMP, %s)
-            ON CONFLICT (TypeName) DO NOTHING
-            RETURNING DataSetTypeID;
+            ON CONFLICT (typename) DO NOTHING
+            RETURNING dataSetTypeid;
         """, (dataset_type, user))
         row = cursor.fetchone()
         if row:
             dataset_type_id = row[0]
         else:
             cursor.execute("""
-                SELECT DataSetTypeID
+                SELECT dataSettypeid
                 FROM dba.tDataSetType
-                WHERE TypeName = %s;
+                WHERE typename = %s;
             """, (dataset_type,))
             dataset_type_id = cursor.fetchone()[0]
         log_message(log_file, "LookupInsert", f"Ensured DataSetType {dataset_type} with DataSetTypeID {dataset_type_id}",
@@ -179,7 +186,6 @@ def ensure_lookup_ids(cursor, datasource, dataset_type, user, log_file, run_uuid
         log_message(log_file, "Error", f"Failed to ensure lookup IDs: {str(e)}",
                     run_uuid=run_uuid, stepcounter="LookupInsert_2", user=user, script_start_time=script_start_time)
         return None, None
-
 def insert_dataset(cursor, config_name, dataset_date, label, datasource_id, dataset_type_id, log_file, run_uuid, user, script_start_time):
     """Insert a new dataset into tDataSet and return its ID."""
     try:
@@ -200,7 +206,6 @@ def insert_dataset(cursor, config_name, dataset_date, label, datasource_id, data
 def update_dataset_status(cursor, dataset_id, datasource_id, dataset_type_id, label, dataset_date, log_file, run_uuid, user, script_start_time):
     """Deactivate other datasets with same DataSourceID, DataSetTypeID, Label, and DataSetDate."""
     try:
-        # Deactivate existing active datasets
         cursor.execute("""
             UPDATE dba.tDataSet
             SET IsActive = FALSE, DataStatusID = 2, EffThruDate = CURRENT_TIMESTAMP
@@ -221,13 +226,14 @@ def add_columns_to_table(cursor, table_name, new_columns, column_lengths, log_fi
     """Add new columns to the target table with appropriate VARCHAR length."""
     try:
         for column in new_columns:
+            column_lower = column.lower().replace(' ', '_').replace('-', '_')
             varchar_length = 1000 if column_lengths.get(column, 255) > 255 else 255
             cursor.execute(f"""
                 ALTER TABLE {table_name}
-                ADD COLUMN IF NOT EXISTS "{column}" VARCHAR({varchar_length});
+                ADD COLUMN IF NOT EXISTS "{column_lower}" VARCHAR({varchar_length});
             """)
-            log_message(log_file, "SchemaUpdate", f"Added column {column} as VARCHAR({varchar_length}) to {table_name}",
-                        run_uuid=run_uuid, stepcounter=f"SchemaUpdate_{column}", user=user, script_start_time=script_start_time)
+            log_message(log_file, "SchemaUpdate", f"Added column {column_lower} as VARCHAR({varchar_length}) to {table_name}",
+                        run_uuid=run_uuid, stepcounter=f"SchemaUpdate_{column_lower}", user=user, script_start_time=script_start_time)
         return True
     except psycopg2.Error as e:
         log_message(log_file, "Error", f"Failed to add columns to {table_name}: {str(e)}",
@@ -240,16 +246,19 @@ def load_data_to_postgres(df, target_table, dataset_id, metadata_label, event_da
         with psycopg2.connect(**DB_PARAMS) as conn:
             with conn.cursor() as cur:
                 # Get table columns
-                table_columns = get_table_columns(cur, target_table)
+                table_columns = get_table_columns(cur, target_table, log_file, run_uuid, user, script_start_time)
                 table_columns_lower = [col.lower() for col in table_columns]
                 log_message(log_file, "DataLoadPrep", f"Table columns for {target_table}: {', '.join(table_columns)}",
                             run_uuid=run_uuid, stepcounter="DataLoadPrep_0", user=user, script_start_time=script_start_time)
                 
-                # Add datasetid, metadata, and date columns (primary key is handled by SERIAL)
+                # Convert DataFrame column names to lowercase
+                column_map = {col: col.lower().replace(' ', '_').replace('-', '_') for col in df.columns}
+                df = df.rename(columns=column_map)
                 df_columns = list(df.columns)
-                log_message(log_file, "DataLoadPrep", f"Source columns before processing: {', '.join(df_columns)}",
+                log_message(log_file, "DataLoadPrep", f"Source columns after lowercase: {', '.join(df_columns)}",
                             run_uuid=run_uuid, stepcounter="DataLoadPrep_1", user=user, script_start_time=script_start_time)
                 
+                # Add datasetid, metadata, and date columns (primary key is handled by SERIAL)
                 df["datasetid"] = dataset_id
                 if metadata_label and "metadata_label" in table_columns_lower:
                     df["metadata_label"] = metadata_label
@@ -488,15 +497,16 @@ def generic_import(config_id):
                     table_name = config["target_table"].split('.')[-1]
 
                     # Check if table exists
-                    if not table_exists(cur, config["target_table"]):
+                    if not table_exists(cur, config["target_table"], log_file, run_uuid, user, script_start_time):
                         if config["importstrategyid"] == 1:
                             # Strategy 1: Create table with source columns plus metadata
                             columns = []
                             columns.append(f'"{table_name}id" SERIAL PRIMARY KEY')
                             columns.append('"datasetid" INT NOT NULL REFERENCES dba.tDataSet(DataSetID)')
                             for col in df.columns:
+                                col_lower = col.lower().replace(' ', '_').replace('-', '_')
                                 varchar_length = 1000 if column_lengths.get(col, 255) > 255 else 255
-                                columns.append(f'"{col}" VARCHAR({varchar_length})')
+                                columns.append(f'"{col_lower}" VARCHAR({varchar_length})')
                             if config["metadata_label_source"] != "none":
                                 columns.append('"metadata_label" VARCHAR(255)')
                             if config["DateConfig"] != "none":
@@ -509,7 +519,7 @@ def generic_import(config_id):
                             try:
                                 cur.execute(create_query)
                                 conn.commit()
-                                log_message(log_file, "SchemaUpdate", f"Created table {config['target_table']} with columns: {table_name}id, datasetid, {', '.join(df.columns)}",
+                                log_message(log_file, "SchemaUpdate", f"Created table {config['target_table']} with columns: {table_name}id, datasetid, {', '.join(col.lower() for col in df.columns)}",
                                             run_uuid=run_uuid, stepcounter="SchemaCreate_0", user=user, script_start_time=script_start_time)
                             except psycopg2.Error as e:
                                 log_message(log_file, "Error", f"Failed to create table {config['target_table']}: {str(e)}\n{traceback.format_exc()}",
@@ -525,7 +535,7 @@ def generic_import(config_id):
                             continue
 
                     # Get table and source columns
-                    table_columns = get_table_columns(cur, config["target_table"])
+                    table_columns = get_table_columns(cur, config["target_table"], log_file, run_uuid, user, script_start_time)
                     source_columns = list(df.columns)
                     log_message(log_file, "SchemaCheck", f"Table columns: {', '.join(table_columns)}",
                                 run_uuid=run_uuid, stepcounter="SchemaCheck_1", user=user, script_start_time=script_start_time)
@@ -533,8 +543,8 @@ def generic_import(config_id):
                                 run_uuid=run_uuid, stepcounter="SchemaCheck_2", user=user, script_start_time=script_start_time)
 
                     # Identify new and missing columns
-                    new_columns = [col for col in source_columns if col not in table_columns]
-                    missing_columns = [col for col in table_columns if col not in source_columns and col not in [f"{table_name}id", 'datasetid', 'metadata_label', 'event_date']]
+                    new_columns = [col for col in source_columns if col.lower() not in [tc.lower() for tc in table_columns]]
+                    missing_columns = [col for col in table_columns if col.lower() not in [sc.lower() for sc in source_columns] and col.lower() not in [f"{table_name}id", 'datasetid', 'metadata_label', 'event_date']]
 
                     # Apply importstrategyid
                     if config["importstrategyid"] == 1:  # Import and create new columns
