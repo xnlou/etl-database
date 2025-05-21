@@ -1,4 +1,3 @@
-
 -- Create the importstrategy table in the dba schema
 CREATE TABLE IF NOT EXISTS dba.timportstrategy (
     importstrategyID SERIAL PRIMARY KEY,
@@ -39,16 +38,18 @@ CREATE TABLE IF NOT EXISTS dba."timportconfig" (
     -- Source of metadata label (filename, specific column in file, or static user-defined value)
     metadata_label_location VARCHAR(255),
     -- Location details for metadata extraction
-    -- For 'filename': regex pattern (e.g., '_([^_]+)')
+    -- For 'filename': position index (e.g., '0' for first part before delimiter)
     -- For 'file_content': column name (e.g., 'EventName')
-    -- For 'static': user-defined value (e.g., 'MeetMax2025')
+    -- For 'static': user-defined value (e.g., 'MeetMaxURLCheck')
     DateConfig VARCHAR(50) NOT NULL CHECK (DateConfig IN ('filename', 'file_content', 'static')),
     -- Source of date metadata (filename, specific column in file, or static date value)
     DateLocation VARCHAR(255),
     -- Location details for date extraction
-    -- For 'filename': regex pattern (e.g., '\d{4}\d{2}\d{2}T\d{6}')
+    -- For 'filename': position index (e.g., '0' for first part before delimiter)
     -- For 'file_content': column name (e.g., 'EventDate')
-    -- For 'static': fixed date value (e.g., '2025-05-16')
+    -- For 'static': fixed date format defined by dateformat
+    dateformat VARCHAR(50),
+    -- Format of the date (e.g., 'yyyyMMddTHHmmss' for '20250520T214109', 'yyyy-MM-dd' for '2025-05-16')
     delimiter VARCHAR(10),
     -- Delimiter used for parsing filenames (e.g., '_'), NULL if not applicable
     target_table VARCHAR(100) NOT NULL,
@@ -69,15 +70,15 @@ CREATE TABLE IF NOT EXISTS dba."timportconfig" (
     ),
     -- Ensure directories are valid absolute paths (no trailing slash) and distinct
     CONSTRAINT valid_date CHECK (
-        (DateConfig = 'filename' AND DateLocation ~ '.*\d.*' AND delimiter IS NOT NULL)
-        OR (DateConfig = 'file_content' AND DateLocation ~ '^[a-zA-Z0-9_]+$')
-        OR (DateConfig = 'static' AND DateLocation ~ '^\d{4}-\d{2}-\d{2}$')
+        (DateConfig = 'filename' AND DateLocation ~ '^[0-9]+$' AND delimiter IS NOT NULL AND dateformat IS NOT NULL)
+        OR (DateConfig = 'file_content' AND DateLocation ~ '^[a-zA-Z0-9_]+$' AND dateformat IS NOT NULL)
+        OR (DateConfig = 'static' AND dateformat IS NOT NULL)
     )
-    -- Ensure DateLocation is appropriate for the DateConfig
+    -- Ensure DateLocation and DateFormat are appropriate for the DateConfig
 );
 
 -- Adding a comment to describe the table
-COMMENT ON TABLE dba."timportconfig" IS 'Configuration table for importing flat files (CSV, XLS, XLSX) into the database, specifying file patterns, directories, metadata, date extraction rules, delimiter, data source/type descriptions, and import strategy.';
+COMMENT ON TABLE dba."timportconfig" IS 'Configuration table for importing flat files (CSV, XLS, XLSX) into the database, specifying file patterns, directories, metadata, date extraction rules, delimiter, date format, data source/type descriptions, and import strategy.';
 
 -- Adding comments to columns for clarity
 COMMENT ON COLUMN dba."timportconfig".config_id IS 'Unique identifier for the configuration.';
@@ -89,9 +90,10 @@ COMMENT ON COLUMN dba."timportconfig".archive_directory IS 'Absolute path to the
 COMMENT ON COLUMN dba."timportconfig".file_pattern IS 'Pattern to match files (glob or regex, e.g., "*.csv" or "\d{8}T\d{6}_.*\.csv").';
 COMMENT ON COLUMN dba."timportconfig".file_type IS 'Type of file to process (CSV, XLS, XLSX).';
 COMMENT ON COLUMN dba."timportconfig".metadata_label_source IS 'Source of the metadata label (filename, file_content, or static user-defined value).';
-COMMENT ON COLUMN dba."timportconfig".metadata_label_location IS 'Location details for metadata extraction (regex for filename, column name for file_content, user-defined value for static).';
+COMMENT ON COLUMN dba."timportconfig".metadata_label_location IS 'Location details for metadata extraction (position index for filename, column name for file_content, user-defined value for static).';
 COMMENT ON COLUMN dba."timportconfig".DateConfig IS 'Source of date metadata (filename, file_content, or static date value).';
-COMMENT ON COLUMN dba."timportconfig".DateLocation IS 'Location details for date extraction (regex for filename, column name for file_content, fixed date for static).';
+COMMENT ON COLUMN dba."timportconfig".DateLocation IS 'Location details for date extraction (position index for filename, column name for file_content, fixed date for static).';
+COMMENT ON COLUMN dba."timportconfig".dateformat IS 'Format of the date (e.g., ''yyyyMMddTHHmmss'' for ''20250520T214109'', ''yyyy-MM-dd'' for ''2025-05-16'').';
 COMMENT ON COLUMN dba."timportconfig".delimiter IS 'Delimiter used for parsing filenames (e.g., ''_'', NULL if not applicable).';
 COMMENT ON COLUMN dba."timportconfig".target_table IS 'Target database table for the imported data.';
 COMMENT ON COLUMN dba."timportconfig".importstrategyID IS 'Foreign key to importstrategy table, defining how to handle column mismatches (e.g., add new columns, ignore, or fail).';
@@ -112,6 +114,7 @@ CREATE OR REPLACE PROCEDURE dba.pimportconfigI(
     p_metadata_label_location VARCHAR,
     p_DateConfig VARCHAR,
     p_DateLocation VARCHAR,
+    p_dateformat VARCHAR,
     p_delimiter VARCHAR,
     p_target_table VARCHAR,
     p_ImportStrategyID INT,
@@ -132,6 +135,7 @@ BEGIN
         metadata_label_location,
         DateConfig,
         DateLocation,
+        dateformat,
         delimiter,
         target_table,
         ImportStrategyID,
@@ -150,6 +154,7 @@ BEGIN
         p_metadata_label_location,
         p_DateConfig,
         p_DateLocation,
+        p_dateformat,
         p_delimiter,
         p_target_table,
         p_ImportStrategyID,
@@ -172,17 +177,37 @@ BEGIN
             '/home/yostfundsadmin/client_etl_workflow/archive/import_MeetMaxURLCheckImport',
             '\d{8}T\d{6}_MeetMaxURLCheck\.csv',
             'CSV',
+            'static',
+            'MeetMaxURLCheck',
             'filename',
-            '_([^_]+)',
-            'filename',
-            '\d{8}T\d{6}',
+            '0',
+            'yyyyMMddTHHmmss',
             '_',
             'public.tmeetmaxurlcheck',
             1, -- Import and create new columns if needed
             '1'::BIT(1)
         );
     ELSE
-        RAISE NOTICE 'Configuration with config_name ''MeetMaxURLCheckImport'' already exists. Skipping insert.';
+        -- Update existing configuration to match new settings
+        CALL dba.pimportconfigU(
+            1, -- config_id
+            NULL, -- config_name (unchanged)
+            NULL, -- DataSource
+            NULL, -- DataSetType
+            NULL, -- source_directory
+            NULL, -- archive_directory
+            NULL, -- file_pattern
+            NULL, -- file_type
+            'static', -- metadata_label_source
+            'MeetMaxURLCheck', -- metadata_label_location
+            'filename', -- DateConfig
+            '0', -- DateLocation
+            'yyyyMMddTHHmmss', -- DateFormat
+            '_', -- delimiter
+            NULL, -- target_table
+            NULL, -- ImportStrategyID
+            NULL -- is_active
+        );
     END IF;
 END;
 $$;
@@ -201,6 +226,7 @@ CREATE OR REPLACE PROCEDURE dba.pimportconfigU(
     p_metadata_label_location VARCHAR DEFAULT NULL,
     p_DateConfig VARCHAR DEFAULT NULL,
     p_DateLocation VARCHAR DEFAULT NULL,
+    p_dateformat VARCHAR DEFAULT NULL,
     p_delimiter VARCHAR DEFAULT NULL,
     p_target_table VARCHAR DEFAULT NULL,
     p_ImportStrategyID INT DEFAULT NULL,
@@ -222,6 +248,7 @@ BEGIN
         metadata_label_location = COALESCE(p_metadata_label_location, metadata_label_location),
         DateConfig = COALESCE(p_DateConfig, DateConfig),
         DateLocation = COALESCE(p_DateLocation, DateLocation),
+        dateformat = COALESCE(p_dateformat, dateformat),
         delimiter = COALESCE(p_delimiter, delimiter),
         target_table = COALESCE(p_target_table, target_table),
         ImportStrategyID = COALESCE(p_ImportStrategyID, ImportStrategyID),
@@ -277,10 +304,10 @@ BEGIN
         FROM information_schema.table_privileges
         WHERE grantee = 'public'
         AND table_schema = 'dba'
-        AND table_name = 'importstrategy'
+        AND table_name = 'timportstrategy'
         AND privilege_type = 'UPDATE'
     ) THEN
-        REVOKE UPDATE ON dba.importstrategy FROM PUBLIC;
+        REVOKE UPDATE ON dba.timportstrategy FROM PUBLIC;
     END IF;
 END;
 $$;
