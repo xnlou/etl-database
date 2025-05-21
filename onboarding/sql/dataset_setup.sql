@@ -239,30 +239,6 @@ BEGIN
     RAISE NOTICE 'Line 183: Completed tTriggerEnforceSingleActiveDataSet block';
 END $OUTER$;
 
--- Line 186: Insert initial data for lookup tables only if they are empty
-DO $OUTER$
-BEGIN
-    RAISE NOTICE 'Line 186: Starting insert into tDataSetType';
-    IF (SELECT COUNT(*) FROM dba.tDataSetType) = 0 THEN
-        INSERT INTO dba.tDataSetType (TypeName, Description) VALUES
-            ('MeetMax', 'Datasets from MeetMax event scraping'),
-            ('ClientUpload', 'Datasets uploaded by clients via SFTP');
-        RAISE NOTICE 'Line 191: Inserted data into tDataSetType';
-    END IF;
-    RAISE NOTICE 'Line 193: Completed tDataSetType insert block';
-END $OUTER$;
-
-DO $OUTER$
-BEGIN
-    RAISE NOTICE 'Line 197: Starting insert into tDataSource';
-    IF (SELECT COUNT(*) FROM dba.tDataSource) = 0 THEN
-        INSERT INTO dba.tDataSource (SourceName, Description) VALUES
-            ('MeetMaxWebsite', 'Data scraped from MeetMax website'),
-            ('SFTPUpload', 'Data uploaded by clients via SFTP');
-        RAISE NOTICE 'Line 202: Inserted data into tDataSource';
-    END IF;
-    RAISE NOTICE 'Line 204: Completed tDataSource insert block';
-END $OUTER$;
 
 DO $OUTER$
 BEGIN
