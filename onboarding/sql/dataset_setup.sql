@@ -247,7 +247,10 @@ BEGIN
         INSERT INTO dba.tDataStatus (StatusName, Description) VALUES
             ('Active', 'Dataset is currently active and in use'),
             ('Inactive', 'Dataset is no longer active but retained for history'),
-            ('Deleted', 'Dataset has been marked for deletion');
+            ('Deleted', 'Dataset has been marked for deletion'),
+            ('New', 'Default status of every new dataset'),
+            ('Failed', 'Status if something goes wrong')
+            ;
         RAISE NOTICE 'Line 213: Inserted data into tDataStatus';
     END IF;
     RAISE NOTICE 'Line 215: Completed tDataStatus insert block';
