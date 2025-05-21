@@ -143,18 +143,18 @@ def ensure_lookup_ids(cursor, datasource, dataset_type, user, log_file, run_uuid
     try:
         # Ensure DataSource exists
         cursor.execute("""
-            INSERT INTO dba.tDataSource (sourcename,createddate, CreatedBy)
+            INSERT INTO dba.tdatasource (sourcename, createddate, createdby)
             VALUES (%s, CURRENT_TIMESTAMP, %s)
             ON CONFLICT (sourcename) DO NOTHING
-            RETURNING dataSourceid;
+            RETURNING datasourceid;
         """, (datasource, user))
         row = cursor.fetchone()
         if row:
             datasource_id = row[0]
         else:
             cursor.execute("""
-                SELECT dataSourceid
-                FROM dba.tDataSource
+                SELECT datasourceid
+                FROM dba.tdatasource
                 WHERE sourcename = %s;
             """, (datasource,))
             datasource_id = cursor.fetchone()[0]
@@ -163,18 +163,18 @@ def ensure_lookup_ids(cursor, datasource, dataset_type, user, log_file, run_uuid
 
         # Ensure DataSetType exists
         cursor.execute("""
-            INSERT INTO dba.tDataSetType (typename,createddate, createdby)
+            INSERT INTO dba.tdatasettype (typename, createddate, createdby)
             VALUES (%s, CURRENT_TIMESTAMP, %s)
             ON CONFLICT (typename) DO NOTHING
-            RETURNING dataSetTypeid;
+            RETURNING datasettypeid;
         """, (dataset_type, user))
         row = cursor.fetchone()
         if row:
             dataset_type_id = row[0]
         else:
             cursor.execute("""
-                SELECT dataSettypeid
-                FROM dba.tDataSetType
+                SELECT datasettypeid
+                FROM dba.tdatasettype
                 WHERE typename = %s;
             """, (dataset_type,))
             dataset_type_id = cursor.fetchone()[0]
@@ -186,13 +186,14 @@ def ensure_lookup_ids(cursor, datasource, dataset_type, user, log_file, run_uuid
         log_message(log_file, "Error", f"Failed to ensure lookup IDs: {str(e)}",
                     run_uuid=run_uuid, stepcounter="LookupInsert_2", user=user, script_start_time=script_start_time)
         return None, None
+
 def insert_dataset(cursor, config_name, dataset_date, label, datasource_id, dataset_type_id, log_file, run_uuid, user, script_start_time):
     """Insert a new dataset into tDataSet and return its ID."""
     try:
         cursor.execute("""
-            INSERT INTO dba.tDataSet (DataSetDate, Label, DataSetTypeID, DataSourceID, DataStatusID, IsActive, CreatedDate, CreatedBy, EffThruDate)
+            INSERT INTO dba.tdataset (datasetdate, label, datasettypeid, datasourceid, datastatusid, isactive, createddate, createdby, effthrudate)
             VALUES (%s, %s, %s, %s, 1, TRUE, CURRENT_TIMESTAMP, %s, '9999-01-01')
-            RETURNING DataSetID;
+            RETURNING datasetid;
         """, (dataset_date, label, dataset_type_id, datasource_id, user))
         dataset_id = cursor.fetchone()[0]
         log_message(log_file, "DatasetInsert", f"Inserted dataset {config_name} with DataSetID {dataset_id}",
@@ -207,14 +208,14 @@ def update_dataset_status(cursor, dataset_id, datasource_id, dataset_type_id, la
     """Deactivate other datasets with same DataSourceID, DataSetTypeID, Label, and DataSetDate."""
     try:
         cursor.execute("""
-            UPDATE dba.tDataSet
-            SET IsActive = FALSE, DataStatusID = 2, EffThruDate = CURRENT_TIMESTAMP
-            WHERE DataSourceID = %s
-              AND DataSetTypeID = %s
-              AND Label = %s
-              AND DataSetDate = %s
-              AND DataSetID != %s
-              AND IsActive = TRUE;
+            UPDATE dba.tdataset
+            SET isactive = FALSE, datastatusid = 2, effthrudate = CURRENT_TIMESTAMP
+            WHERE datasourceid = %s
+              AND datasettypeid = %s
+              AND label = %s
+              AND datasetdate = %s
+              AND datasetid != %s
+              AND isactive = TRUE;
         """, (datasource_id, dataset_type_id, label, dataset_date, dataset_id))
         log_message(log_file, "DatasetUpdate", f"Deactivated other datasets for DataSetID={dataset_id}, DataSourceID={datasource_id}, DataSetTypeID={dataset_type_id}, Label={label}, DataSetDate={dataset_date}",
                     run_uuid=run_uuid, stepcounter="DatasetUpdate_0", user=user, script_start_time=script_start_time)
@@ -334,7 +335,6 @@ def generic_import(config_id):
     timestamp = datetime.now().strftime("%Y%m%dT%H%M%S")
     log_file = LOG_DIR / f"generic_import_{timestamp}"
 
-    # Ensure log directory exists
     try:
         ensure_directory_exists(LOG_DIR)
         log_message(log_file, "Initialization", f"Script started at {timestamp} for config_id {config_id}",
@@ -343,7 +343,6 @@ def generic_import(config_id):
         print(f"Error initializing log directory: {str(e)}")
         sys.exit(1)
 
-    # Fetch configuration
     config = get_config(config_id, log_file, run_uuid, user, script_start_time)
     if not config:
         log_message(log_file, "Error", "Failed to retrieve configuration. Exiting.",
@@ -353,16 +352,13 @@ def generic_import(config_id):
     log_message(log_file, "Initialization", f"Configuration loaded: {config['config_name']}",
                 run_uuid=run_uuid, stepcounter="Initialization_2", user=user, script_start_time=script_start_time)
 
-    # Ensure directories exist
     ensure_directory_exists(config["source_directory"])
     ensure_directory_exists(config["archive_directory"])
 
-    # Find matching files using regex pattern
     files = []
     try:
         regex_pattern = config["file_pattern"].replace('\\\\', '\\')
         pattern = re.compile(regex_pattern)
-        
         all_files = os.listdir(config["source_directory"])
         log_message(log_file, "FileSearch", f"Files in {config['source_directory']}: {', '.join(all_files)}",
                     run_uuid=run_uuid, stepcounter="FileSearch_0", user=user, script_start_time=script_start_time)
@@ -398,18 +394,16 @@ def generic_import(config_id):
     dataset_ids = []
     for file_path in files:
         filename = os.path.basename(file_path)
-        file_success = True  # Track success per file
+        file_success = True
         log_message(log_file, "Processing", f"Processing file: {filename}",
                     run_uuid=run_uuid, stepcounter=f"File_{filename}_0", user=user, script_start_time=script_start_time)
 
-        # Extract dataset date and label from filename
         dataset_date_match = re.search(r'\d{8}', filename)
         dataset_date = datetime.strptime(dataset_date_match.group(0), '%Y%m%d').date() if dataset_date_match else datetime.now().date()
         label = parse_metadata(filename, config, config["metadata_label_source"], config["metadata_label_location"], config["delimiter"], log_file, run_uuid, user, script_start_time)
         if not label:
             label = config["config_name"]
 
-        # Ensure DataSource and DataSetType exist and get their IDs
         with psycopg2.connect(**DB_PARAMS) as conn:
             with conn.cursor() as cur:
                 try:
@@ -421,7 +415,6 @@ def generic_import(config_id):
                         file_success = False
                         continue
 
-                    # Insert dataset record
                     dataset_id = insert_dataset(cur, config["config_name"], dataset_date, label, datasource_id, dataset_type_id, log_file, run_uuid, user, script_start_time)
                     if not dataset_id:
                         log_message(log_file, "Error", f"Failed to create dataset for file {filename}. Skipping.",
@@ -432,7 +425,6 @@ def generic_import(config_id):
                     dataset_ids.append((dataset_id, datasource_id, dataset_type_id, label, dataset_date))
                     conn.commit()
 
-                    # Deactivate other datasets immediately after insert
                     update_dataset_status(cur, dataset_id, datasource_id, dataset_type_id, label, dataset_date, log_file, run_uuid, user, script_start_time)
                     conn.commit()
                 except Exception as e:
@@ -442,7 +434,6 @@ def generic_import(config_id):
                     file_success = False
                     continue
 
-        # Convert XLS/XLSX to CSV if needed
         csv_path = file_path
         if config["file_type"] in ["XLS", "XLSX"]:
             csv_path = os.path.join(FILE_WATCHER_DIR, f"{timestamp}_{filename}.csv")
@@ -463,7 +454,6 @@ def generic_import(config_id):
                 file_success = False
                 continue
 
-        # Read CSV to get source columns and data lengths
         try:
             df = pd.read_csv(csv_path)
             log_message(log_file, "Processing", f"Read {len(df)} rows from {csv_path} with columns: {', '.join(df.columns)}",
@@ -477,7 +467,6 @@ def generic_import(config_id):
                 os.remove(csv_path)
             continue
 
-        # Get column lengths
         try:
             column_lengths = get_column_lengths(df)
             log_message(log_file, "Processing", f"Computed column lengths: {column_lengths}",
@@ -489,20 +478,15 @@ def generic_import(config_id):
             file_success = False
             continue
 
-        # Check if table exists and handle columns
         with psycopg2.connect(**DB_PARAMS) as conn:
             with conn.cursor() as cur:
                 try:
-                    # Define table_name early
                     table_name = config["target_table"].split('.')[-1]
-
-                    # Check if table exists
                     if not table_exists(cur, config["target_table"], log_file, run_uuid, user, script_start_time):
                         if config["importstrategyid"] == 1:
-                            # Strategy 1: Create table with source columns plus metadata
                             columns = []
                             columns.append(f'"{table_name}id" SERIAL PRIMARY KEY')
-                            columns.append('"datasetid" INT NOT NULL REFERENCES dba.tDataSet(DataSetID)')
+                            columns.append('"datasetid" INT NOT NULL REFERENCES dba.tdataset(datasetid)')
                             for col in df.columns:
                                 col_lower = col.lower().replace(' ', '_').replace('-', '_')
                                 varchar_length = 1000 if column_lengths.get(col, 255) > 255 else 255
@@ -534,7 +518,6 @@ def generic_import(config_id):
                             file_success = False
                             continue
 
-                    # Get table and source columns
                     table_columns = get_table_columns(cur, config["target_table"], log_file, run_uuid, user, script_start_time)
                     source_columns = list(df.columns)
                     log_message(log_file, "SchemaCheck", f"Table columns: {', '.join(table_columns)}",
@@ -542,21 +525,19 @@ def generic_import(config_id):
                     log_message(log_file, "SchemaCheck", f"Source columns: {', '.join(source_columns)}",
                                 run_uuid=run_uuid, stepcounter="SchemaCheck_2", user=user, script_start_time=script_start_time)
 
-                    # Identify new and missing columns
                     new_columns = [col for col in source_columns if col.lower() not in [tc.lower() for tc in table_columns]]
                     missing_columns = [col for col in table_columns if col.lower() not in [sc.lower() for sc in source_columns] and col.lower() not in [f"{table_name}id", 'datasetid', 'metadata_label', 'event_date']]
 
-                    # Apply importstrategyid
-                    if config["importstrategyid"] == 1:  # Import and create new columns
+                    if config["importstrategyid"] == 1:
                         if new_columns:
                             if not add_columns_to_table(cur, config["target_table"], new_columns, column_lengths, log_file, run_uuid, user, script_start_time):
                                 success = False
                                 file_success = False
                                 continue
                             conn.commit()
-                    elif config["importstrategyid"] == 2:  # Import only (ignore new columns)
+                    elif config["importstrategyid"] == 2:
                         pass
-                    elif config["importstrategyid"] == 3:  # Import or fail if columns missing
+                    elif config["importstrategyid"] == 3:
                         if missing_columns:
                             log_message(log_file, "Error", f"Missing required columns in source file: {', '.join(missing_columns)}",
                                         run_uuid=run_uuid, stepcounter="SchemaCheck_3", user=user, script_start_time=script_start_time)
@@ -564,7 +545,6 @@ def generic_import(config_id):
                             file_success = False
                             continue
 
-                    # Parse metadata
                     metadata_label = parse_metadata(filename, config, config["metadata_label_source"],
                                                    config["metadata_label_location"], config["delimiter"],
                                                    log_file, run_uuid, user, script_start_time)
@@ -572,12 +552,10 @@ def generic_import(config_id):
                                                 config["DateLocation"], config["delimiter"],
                                                 log_file, run_uuid, user, script_start_time)
 
-                    # Load data to PostgreSQL
                     log_message(log_file, "Processing", f"Calling load_data_to_postgres for {filename} with dataset_id {dataset_id}",
                                 run_uuid=run_uuid, stepcounter=f"File_{filename}_11", user=user, script_start_time=script_start_time)
                     if load_data_to_postgres(df, config["target_table"], dataset_id, metadata_label, event_date,
                                             log_file, run_uuid, user, script_start_time):
-                        # Move file to archive
                         archive_path = os.path.join(config["archive_directory"], filename)
                         try:
                             shutil.move(file_path, archive_path)
@@ -602,7 +580,6 @@ def generic_import(config_id):
                     file_success = False
                     continue
 
-                # Clean up temporary CSV if created
                 if csv_path != file_path and os.path.exists(csv_path):
                     try:
                         os.remove(csv_path)
