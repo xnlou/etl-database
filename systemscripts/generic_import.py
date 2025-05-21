@@ -19,9 +19,6 @@ from systemscripts.log_utils import log_message
 from systemscripts.directory_management import ensure_directory_exists, LOG_DIR, FILE_WATCHER_DIR
 from systemscripts.xls_to_csv import xls_to_csv
 
-# Add root directory to sys.path
-sys.path.append(str(Path(__file__).parent.parent))
-
 # Database connection parameters
 DB_PARAMS = {
     "dbname": "Feeds",
@@ -187,42 +184,6 @@ def ensure_lookup_ids(cursor, datasource, dataset_type, user, log_file, run_uuid
                     run_uuid=run_uuid, stepcounter="LookupInsert_2", user=user, script_start_time=script_start_time)
         return None, None
 
-def insert_dataset(cursor, config_name, dataset_date, label, datasource_id, dataset_type_id, log_file, run_uuid, user, script_start_time):
-    """Insert a new dataset into tDataSet and return its ID."""
-    try:
-        cursor.execute("""
-            INSERT INTO dba.tdataset (datasetdate, label, datasettypeid, datasourceid, datastatusid, isactive, createddate, createdby, effthrudate)
-            VALUES (%s, %s, %s, %s, 1, TRUE, CURRENT_TIMESTAMP, %s, '9999-01-01')
-            RETURNING datasetid;
-        """, (dataset_date, label, dataset_type_id, datasource_id, user))
-        dataset_id = cursor.fetchone()[0]
-        log_message(log_file, "DatasetInsert", f"Inserted dataset {config_name} with DataSetID {dataset_id}",
-                    run_uuid=run_uuid, stepcounter="DatasetInsert_0", user=user, script_start_time=script_start_time)
-        return dataset_id
-    except psycopg2.Error as e:
-        log_message(log_file, "Error", f"Failed to insert dataset {config_name}: {str(e)}",
-                    run_uuid=run_uuid, stepcounter="DatasetInsert_1", user=user, script_start_time=script_start_time)
-        return None
-
-def update_dataset_status(cursor, dataset_id, datasource_id, dataset_type_id, label, dataset_date, log_file, run_uuid, user, script_start_time):
-    """Deactivate other datasets with same DataSourceID, DataSetTypeID, Label, and DataSetDate."""
-    try:
-        cursor.execute("""
-            UPDATE dba.tdataset
-            SET isactive = FALSE, datastatusid = 2, effthrudate = CURRENT_TIMESTAMP
-            WHERE datasourceid = %s
-              AND datasettypeid = %s
-              AND label = %s
-              AND datasetdate = %s
-              AND datasetid != %s
-              AND isactive = TRUE;
-        """, (datasource_id, dataset_type_id, label, dataset_date, dataset_id))
-        log_message(log_file, "DatasetUpdate", f"Deactivated other datasets for DataSetID={dataset_id}, DataSourceID={datasource_id}, DataSetTypeID={dataset_type_id}, Label={label}, DataSetDate={dataset_date}",
-                    run_uuid=run_uuid, stepcounter="DatasetUpdate_0", user=user, script_start_time=script_start_time)
-    except psycopg2.Error as e:
-        log_message(log_file, "Error", f"Failed to deactivate other datasets for DataSetID {dataset_id}: {str(e)}\n{traceback.format_exc()}",
-                    run_uuid=run_uuid, stepcounter="DatasetUpdate_1", user=user, script_start_time=script_start_time)
-
 def add_columns_to_table(cursor, table_name, new_columns, column_lengths, log_file, run_uuid, user, script_start_time):
     """Add new columns to the target table with appropriate VARCHAR length."""
     try:
@@ -276,7 +237,6 @@ def load_data_to_postgres(df, target_table, dataset_id, metadata_label, event_da
                             matching_columns.append(col)
                             column_mapping[col] = table_col
                             break
-                
                 if not matching_columns:
                     log_message(log_file, "Error", f"No matching columns between source ({', '.join(df.columns)}) and table ({', '.join(table_columns)})",
                                 run_uuid=run_uuid, stepcounter="DataLoad_2", user=user, script_start_time=script_start_time)
@@ -391,7 +351,6 @@ def generic_import(config_id):
         return
 
     success = True
-    dataset_ids = []
     for file_path in files:
         filename = os.path.basename(file_path)
         file_success = True
@@ -404,32 +363,19 @@ def generic_import(config_id):
         if not label:
             label = config["config_name"]
 
+        # Create dataset with 'New' status
         with psycopg2.connect(**DB_PARAMS) as conn:
             with conn.cursor() as cur:
                 try:
-                    datasource_id, dataset_type_id = ensure_lookup_ids(cur, config["DataSource"], config["DataSetType"], user, log_file, run_uuid, script_start_time)
-                    if not datasource_id or not dataset_type_id:
-                        log_message(log_file, "Error", f"Failed to ensure lookup IDs for file {filename}. Skipping.",
-                                    run_uuid=run_uuid, stepcounter=f"File_{filename}_1", user=user, script_start_time=script_start_time)
-                        success = False
-                        file_success = False
-                        continue
-
-                    dataset_id = insert_dataset(cur, config["config_name"], dataset_date, label, datasource_id, dataset_type_id, log_file, run_uuid, user, script_start_time)
-                    if not dataset_id:
-                        log_message(log_file, "Error", f"Failed to create dataset for file {filename}. Skipping.",
-                                    run_uuid=run_uuid, stepcounter=f"File_{filename}_2", user=user, script_start_time=script_start_time)
-                        success = False
-                        file_success = False
-                        continue
-                    dataset_ids.append((dataset_id, datasource_id, dataset_type_id, label, dataset_date))
+                    cur.execute("SELECT dba.f_dataset_iu(%s, %s, %s, %s, %s, %s, %s)",
+                                (None, dataset_date, config["DataSetType"], config["DataSource"], label, 'New', user))
+                    dataset_id = cur.fetchone()[0]
                     conn.commit()
-
-                    update_dataset_status(cur, dataset_id, datasource_id, dataset_type_id, label, dataset_date, log_file, run_uuid, user, script_start_time)
-                    conn.commit()
-                except Exception as e:
-                    log_message(log_file, "Error", f"Unexpected error in dataset setup for {filename}: {str(e)}\n{traceback.format_exc()}",
-                                run_uuid=run_uuid, stepcounter=f"File_{filename}_3", user=user, script_start_time=script_start_time)
+                    log_message(log_file, "DatasetInsert", f"Created dataset with ID {dataset_id} and status 'New'",
+                                run_uuid=run_uuid, stepcounter=f"File_{filename}_1", user=user, script_start_time=script_start_time)
+                except psycopg2.Error as e:
+                    log_message(log_file, "Error", f"Failed to create dataset for {filename}: {str(e)}\n{traceback.format_exc()}",
+                                run_uuid=run_uuid, stepcounter=f"File_{filename}_2", user=user, script_start_time=script_start_time)
                     success = False
                     file_success = False
                     continue
@@ -444,6 +390,18 @@ def generic_import(config_id):
                                 run_uuid=run_uuid, stepcounter=f"File_{filename}_4", user=user, script_start_time=script_start_time)
                     success = False
                     file_success = False
+                    # Update dataset to 'Failed'
+                    with psycopg2.connect(**DB_PARAMS) as conn:
+                        with conn.cursor() as cur:
+                            try:
+                                cur.execute("SELECT dba.f_dataset_iu(%s, %s, %s, %s, %s, %s, %s)",
+                                            (dataset_id, dataset_date, config["DataSetType"], config["DataSource"], label, 'Failed', user))
+                                conn.commit()
+                                log_message(log_file, "DatasetUpdate", f"Updated dataset {dataset_id} to status 'Failed' due to conversion failure",
+                                            run_uuid=run_uuid, stepcounter=f"File_{filename}_5", user=user, script_start_time=script_start_time)
+                            except psycopg2.Error as e:
+                                log_message(log_file, "Error", f"Failed to update dataset {dataset_id} to 'Failed': {str(e)}",
+                                            run_uuid=run_uuid, stepcounter=f"File_{filename}_6", user=user, script_start_time=script_start_time)
                     continue
                 log_message(log_file, "Conversion", f"Converted {filename} to {csv_path}",
                             run_uuid=run_uuid, stepcounter=f"File_{filename}_5", user=user, script_start_time=script_start_time)
@@ -452,6 +410,18 @@ def generic_import(config_id):
                             run_uuid=run_uuid, stepcounter=f"File_{filename}_6", user=user, script_start_time=script_start_time)
                 success = False
                 file_success = False
+                # Update dataset to 'Failed'
+                with psycopg2.connect(**DB_PARAMS) as conn:
+                    with conn.cursor() as cur:
+                        try:
+                            cur.execute("SELECT dba.f_dataset_iu(%s, %s, %s, %s, %s, %s, %s)",
+                                        (dataset_id, dataset_date, config["DataSetType"], config["DataSource"], label, 'Failed', user))
+                            conn.commit()
+                            log_message(log_file, "DatasetUpdate", f"Updated dataset {dataset_id} to status 'Failed' due to conversion error",
+                                        run_uuid=run_uuid, stepcounter=f"File_{filename}_7", user=user, script_start_time=script_start_time)
+                        except psycopg2.Error as e:
+                            log_message(log_file, "Error", f"Failed to update dataset {dataset_id} to 'Failed': {str(e)}",
+                                        run_uuid=run_uuid, stepcounter=f"File_{filename}_8", user=user, script_start_time=script_start_time)
                 continue
 
         try:
@@ -465,6 +435,18 @@ def generic_import(config_id):
             file_success = False
             if csv_path != file_path and os.path.exists(csv_path):
                 os.remove(csv_path)
+            # Update dataset to 'Failed'
+            with psycopg2.connect(**DB_PARAMS) as conn:
+                with conn.cursor() as cur:
+                    try:
+                        cur.execute("SELECT dba.f_dataset_iu(%s, %s, %s, %s, %s, %s, %s)",
+                                    (dataset_id, dataset_date, config["DataSetType"], config["DataSource"], label, 'Failed', user))
+                        conn.commit()
+                        log_message(log_file, "DatasetUpdate", f"Updated dataset {dataset_id} to status 'Failed' due to CSV read error",
+                                    run_uuid=run_uuid, stepcounter=f"File_{filename}_9", user=user, script_start_time=script_start_time)
+                    except psycopg2.Error as e:
+                        log_message(log_file, "Error", f"Failed to update dataset {dataset_id} to 'Failed': {str(e)}",
+                                    run_uuid=run_uuid, stepcounter=f"File_{filename}_10", user=user, script_start_time=script_start_time)
             continue
 
         try:
@@ -476,6 +458,18 @@ def generic_import(config_id):
                         run_uuid=run_uuid, stepcounter=f"File_{filename}_10", user=user, script_start_time=script_start_time)
             success = False
             file_success = False
+            # Update dataset to 'Failed'
+            with psycopg2.connect(**DB_PARAMS) as conn:
+                with conn.cursor() as cur:
+                    try:
+                        cur.execute("SELECT dba.f_dataset_iu(%s, %s, %s, %s, %s, %s, %s)",
+                                    (dataset_id, dataset_date, config["DataSetType"], config["DataSource"], label, 'Failed', user))
+                        conn.commit()
+                        log_message(log_file, "DatasetUpdate", f"Updated dataset {dataset_id} to status 'Failed' due to column length error",
+                                    run_uuid=run_uuid, stepcounter=f"File_{filename}_11", user=user, script_start_time=script_start_time)
+                    except psycopg2.Error as e:
+                        log_message(log_file, "Error", f"Failed to update dataset {dataset_id} to 'Failed': {str(e)}",
+                                    run_uuid=run_uuid, stepcounter=f"File_{filename}_12", user=user, script_start_time=script_start_time)
             continue
 
         with psycopg2.connect(**DB_PARAMS) as conn:
@@ -510,12 +504,36 @@ def generic_import(config_id):
                                             run_uuid=run_uuid, stepcounter="SchemaCreate_1", user=user, script_start_time=script_start_time)
                                 success = False
                                 file_success = False
+                                # Update dataset to 'Failed'
+                                with psycopg2.connect(**DB_PARAMS) as conn:
+                                    with conn.cursor() as cur:
+                                        try:
+                                            cur.execute("SELECT dba.f_dataset_iu(%s, %s, %s, %s, %s, %s, %s)",
+                                                        (dataset_id, dataset_date, config["DataSetType"], config["DataSource"], label, 'Failed', user))
+                                            conn.commit()
+                                            log_message(log_file, "DatasetUpdate", f"Updated dataset {dataset_id} to status 'Failed' due to table creation error",
+                                                        run_uuid=run_uuid, stepcounter=f"File_{filename}_13", user=user, script_start_time=script_start_time)
+                                        except psycopg2.Error as e:
+                                            log_message(log_file, "Error", f"Failed to update dataset {dataset_id} to 'Failed': {str(e)}",
+                                                        run_uuid=run_uuid, stepcounter=f"File_{filename}_14", user=user, script_start_time=script_start_time)
                                 continue
                         else:
                             log_message(log_file, "Error", f"Table {config['target_table']} does not exist and importstrategyid {config['importstrategyid']} does not allow creation",
                                         run_uuid=run_uuid, stepcounter="SchemaCheck_0", user=user, script_start_time=script_start_time)
                             success = False
                             file_success = False
+                            # Update dataset to 'Failed'
+                            with psycopg2.connect(**DB_PARAMS) as conn:
+                                with conn.cursor() as cur:
+                                    try:
+                                        cur.execute("SELECT dba.f_dataset_iu(%s, %s, %s, %s, %s, %s, %s)",
+                                                    (dataset_id, dataset_date, config["DataSetType"], config["DataSource"], label, 'Failed', user))
+                                        conn.commit()
+                                        log_message(log_file, "DatasetUpdate", f"Updated dataset {dataset_id} to status 'Failed' due to table existence error",
+                                                    run_uuid=run_uuid, stepcounter=f"File_{filename}_15", user=user, script_start_time=script_start_time)
+                                    except psycopg2.Error as e:
+                                        log_message(log_file, "Error", f"Failed to update dataset {dataset_id} to 'Failed': {str(e)}",
+                                                    run_uuid=run_uuid, stepcounter=f"File_{filename}_16", user=user, script_start_time=script_start_time)
                             continue
 
                     table_columns = get_table_columns(cur, config["target_table"], log_file, run_uuid, user, script_start_time)
@@ -533,6 +551,18 @@ def generic_import(config_id):
                             if not add_columns_to_table(cur, config["target_table"], new_columns, column_lengths, log_file, run_uuid, user, script_start_time):
                                 success = False
                                 file_success = False
+                                # Update dataset to 'Failed'
+                                with psycopg2.connect(**DB_PARAMS) as conn:
+                                    with conn.cursor() as cur:
+                                        try:
+                                            cur.execute("SELECT dba.f_dataset_iu(%s, %s, %s, %s, %s, %s, %s)",
+                                                        (dataset_id, dataset_date, config["DataSetType"], config["DataSource"], label, 'Failed', user))
+                                            conn.commit()
+                                            log_message(log_file, "DatasetUpdate", f"Updated dataset {dataset_id} to status 'Failed' due to column addition error",
+                                                        run_uuid=run_uuid, stepcounter=f"File_{filename}_17", user=user, script_start_time=script_start_time)
+                                        except psycopg2.Error as e:
+                                            log_message(log_file, "Error", f"Failed to update dataset {dataset_id} to 'Failed': {str(e)}",
+                                                        run_uuid=run_uuid, stepcounter=f"File_{filename}_18", user=user, script_start_time=script_start_time)
                                 continue
                             conn.commit()
                     elif config["importstrategyid"] == 2:
@@ -543,6 +573,18 @@ def generic_import(config_id):
                                         run_uuid=run_uuid, stepcounter="SchemaCheck_3", user=user, script_start_time=script_start_time)
                             success = False
                             file_success = False
+                            # Update dataset to 'Failed'
+                            with psycopg2.connect(**DB_PARAMS) as conn:
+                                with conn.cursor() as cur:
+                                    try:
+                                        cur.execute("SELECT dba.f_dataset_iu(%s, %s, %s, %s, %s, %s, %s)",
+                                                    (dataset_id, dataset_date, config["DataSetType"], config["DataSource"], label, 'Failed', user))
+                                        conn.commit()
+                                        log_message(log_file, "DatasetUpdate", f"Updated dataset {dataset_id} to status 'Failed' due to missing columns",
+                                                    run_uuid=run_uuid, stepcounter=f"File_{filename}_19", user=user, script_start_time=script_start_time)
+                                    except psycopg2.Error as e:
+                                        log_message(log_file, "Error", f"Failed to update dataset {dataset_id} to 'Failed': {str(e)}",
+                                                    run_uuid=run_uuid, stepcounter=f"File_{filename}_20", user=user, script_start_time=script_start_time)
                             continue
 
                     metadata_label = parse_metadata(filename, config, config["metadata_label_source"],
@@ -573,21 +615,45 @@ def generic_import(config_id):
                                     run_uuid=run_uuid, stepcounter=f"File_{filename}_14", user=user, script_start_time=script_start_time)
                         success = False
                         file_success = False
+
+                    # Update dataset status based on import outcome
+                    status = 'Active' if file_success else 'Failed'
+                    try:
+                        cur.execute("SELECT dba.f_dataset_iu(%s, %s, %s, %s, %s, %s, %s)",
+                                    (dataset_id, dataset_date, config["DataSetType"], config["DataSource"], label, status, user))
+                        conn.commit()
+                        log_message(log_file, "DatasetUpdate", f"Updated dataset {dataset_id} to status '{status}'",
+                                    run_uuid=run_uuid, stepcounter=f"File_{filename}_15", user=user, script_start_time=script_start_time)
+                    except psycopg2.Error as e:
+                        log_message(log_file, "Error", f"Failed to update dataset {dataset_id} to '{status}': {str(e)}\n{traceback.format_exc()}",
+                                    run_uuid=run_uuid, stepcounter=f"File_{filename}_16", user=user, script_start_time=script_start_time)
+                        success = False
+                        file_success = False
+
                 except Exception as e:
                     log_message(log_file, "Error", f"Unexpected error processing {filename}: {str(e)}\n{traceback.format_exc()}",
-                                run_uuid=run_uuid, stepcounter=f"File_{filename}_15", user=user, script_start_time=script_start_time)
+                                run_uuid=run_uuid, stepcounter=f"File_{filename}_17", user=user, script_start_time=script_start_time)
                     success = False
                     file_success = False
-                    continue
+                    # Update dataset to 'Failed'
+                    try:
+                        cur.execute("SELECT dba.f_dataset_iu(%s, %s, %s, %s, %s, %s, %s)",
+                                    (dataset_id, dataset_date, config["DataSetType"], config["DataSource"], label, 'Failed', user))
+                        conn.commit()
+                        log_message(log_file, "DatasetUpdate", f"Updated dataset {dataset_id} to status 'Failed' due to unexpected error",
+                                    run_uuid=run_uuid, stepcounter=f"File_{filename}_18", user=user, script_start_time=script_start_time)
+                    except psycopg2.Error as e:
+                        log_message(log_file, "Error", f"Failed to update dataset {dataset_id} to 'Failed': {str(e)}\n{traceback.format_exc()}",
+                                    run_uuid=run_uuid, stepcounter=f"File_{filename}_19", user=user, script_start_time=script_start_time)
 
                 if csv_path != file_path and os.path.exists(csv_path):
                     try:
                         os.remove(csv_path)
                         log_message(log_file, "Processing", f"Removed temporary CSV {csv_path}",
-                                    run_uuid=run_uuid, stepcounter=f"File_{filename}_16", user=user, script_start_time=script_start_time)
+                                    run_uuid=run_uuid, stepcounter=f"File_{filename}_20", user=user, script_start_time=script_start_time)
                     except Exception as e:
                         log_message(log_file, "Error", f"Failed to remove temporary CSV {csv_path}: {str(e)}\n{traceback.format_exc()}",
-                                    run_uuid=run_uuid, stepcounter=f"File_{filename}_17", user=user, script_start_time=script_start_time)
+                                    run_uuid=run_uuid, stepcounter=f"File_{filename}_21", user=user, script_start_time=script_start_time)
 
     log_message(log_file, "Finalization", f"Completed processing for config_id {config_id} with overall success={success}",
                 run_uuid=run_uuid, stepcounter="Finalization_0", user=user, script_start_time=script_start_time)
