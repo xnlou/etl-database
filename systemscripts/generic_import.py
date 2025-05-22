@@ -192,6 +192,25 @@ def get_column_lengths(df):
         lengths[col] = safe_length
     return lengths
 
+def get_empty_datastatus_id(cursor, log_file, run_uuid, user, script_start_time):
+    """Retrieve the datastatusid for the 'Empty' status."""
+    try:
+        cursor.execute("""
+            SELECT datastatusid
+            FROM dba.tdatastatus
+            WHERE statusname = 'Empty';
+        """)
+        row = cursor.fetchone()
+        if row:
+            return row[0]
+        log_message(log_file, "Error", "No 'Empty' status found in dba.tdatastatus",
+                    run_uuid=run_uuid, stepcounter="DataStatusFetch_0", user=user, script_start_time=script_start_time)
+        return None
+    except psycopg2.Error as e:
+        log_message(log_file, "Error", f"Failed to fetch 'Empty' datastatusid: {str(e)}",
+                    run_uuid=run_uuid, stepcounter="DataStatusFetch_1", user=user, script_start_time=script_start_time)
+        return None
+
 def ensure_lookup_ids(cursor, datasource, dataset_type, user, log_file, run_uuid, script_start_time):
     """Ensure datasource and datasettype exist in tdatasource and tdatasettype, inserting if necessary."""
     try:
@@ -277,6 +296,27 @@ def update_dataset_status(cursor, dataset_id, datasource_id, dataset_type_id, la
         log_message(log_file, "Error", f"Failed to deactivate other datasets for datasetid {dataset_id}: {str(e)}\n{traceback.format_exc()}",
                     run_uuid=run_uuid, stepcounter="DatasetUpdate_1", user=user, script_start_time=script_start_time)
 
+def update_dataset_empty_status(cursor, dataset_id, log_file, run_uuid, user, script_start_time):
+    """Update the dataset to set datastatusid to 'Empty'."""
+    empty_status_id = get_empty_datastatus_id(cursor, log_file, run_uuid, user, script_start_time)
+    if not empty_status_id:
+        log_message(log_file, "Error", f"Cannot update dataset {dataset_id} to 'Empty' status: datastatusid not found",
+                    run_uuid=run_uuid, stepcounter="DatasetEmptyUpdate_0", user=user, script_start_time=script_start_time)
+        return False
+    try:
+        cursor.execute("""
+            UPDATE dba.tdataset
+            SET datastatusid = %s
+            WHERE datasetid = %s;
+        """, (empty_status_id, dataset_id))
+        log_message(log_file, "DatasetEmptyUpdate", f"Updated dataset {dataset_id} to 'Empty' status (datastatusid={empty_status_id})",
+                    run_uuid=run_uuid, stepcounter="DatasetEmptyUpdate_1", user=user, script_start_time=script_start_time)
+        return True
+    except psycopg2.Error as e:
+        log_message(log_file, "Error", f"Failed to update dataset {dataset_id} to 'Empty' status: {str(e)}\n{traceback.format_exc()}",
+                    run_uuid=run_uuid, stepcounter="DatasetEmptyUpdate_2", user=user, script_start_time=script_start_time)
+        return False
+
 def add_columns_to_table(cursor, table_name, new_columns, column_lengths, log_file, run_uuid, user, script_start_time):
     """Add new columns or update existing ones to the target table with appropriate VARCHAR length."""
     try:
@@ -311,7 +351,7 @@ def add_columns_to_table(cursor, table_name, new_columns, column_lengths, log_fi
         return False
 
 def load_data_to_postgres(df, target_table, dataset_id, metadata_label, event_date, log_file, run_uuid, user, script_start_time):
-    """Load DataFrame to PostgreSQL table with datasetid, metadata, and date, truncating long values."""
+    """Load DataFrame to PostgreSQL table with datasetid, metadata, and date, handling empty files."""
     try:
         with psycopg2.connect(**DB_PARAMS) as conn:
             with conn.cursor() as cur:
@@ -357,6 +397,25 @@ def load_data_to_postgres(df, target_table, dataset_id, metadata_label, event_da
                 
                 df = df[matching_columns].rename(columns=column_mapping)
                 
+                # Update table schema with new columns
+                new_columns = [col for col in df_columns if col.lower() not in [tc.lower() for tc in table_columns]]
+                if new_columns and config["importstrategyid"] == 1:
+                    column_lengths = get_column_lengths(df)
+                    if not add_columns_to_table(cur, target_table, new_columns, column_lengths, log_file, run_uuid, user, script_start_time):
+                        log_message(log_file, "Error", f"Failed to update schema for {target_table} with new columns: {', '.join(new_columns)}",
+                                    run_uuid=run_uuid, stepcounter="DataLoadPrep_3", user=user, script_start_time=script_start_time)
+                        return False
+                    conn.commit()
+                
+                # Check if DataFrame is empty
+                if df.empty:
+                    log_message(log_file, "Warning", f"CSV contains headers but no data rows for {target_table}. Columns processed: {', '.join(df.columns)}. Marking dataset as 'Empty'.",
+                                run_uuid=run_uuid, stepcounter="DataLoad_4", user=user, script_start_time=script_start_time)
+                    if not update_dataset_empty_status(cur, dataset_id, log_file, run_uuid, user, script_start_time):
+                        return False
+                    conn.commit()
+                    return True
+                
                 # Truncate values to fit column lengths
                 for col in df.columns:
                     col_lower = col.lower()
@@ -370,21 +429,15 @@ def load_data_to_postgres(df, target_table, dataset_id, metadata_label, event_da
                             log_message(log_file, "Warning", f"Truncated {len(long_values)} values in column {col} to {max_length} characters",
                                         run_uuid=run_uuid, stepcounter=f"DataLoad_Truncate_{col}", user=user, script_start_time=script_start_time)
                 
-                # Check DataFrame state
-                if df.empty:
-                    log_message(log_file, "Error", f"DataFrame is empty after filtering for {target_table}",
-                                run_uuid=run_uuid, stepcounter="DataLoad_3", user=user, script_start_time=script_start_time)
-                    return False
-                
-                log_message(log_file, "DataLoadPrep", f"DataFrame rows: {len(df)}, columns: {', '.join(df.columns)}",
-                            run_uuid=run_uuid, stepcounter="DataLoadPrep_3", user=user, script_start_time=script_start_time)
-                
                 # Convert DataFrame to list of tuples
                 records = [tuple(row) for row in df.to_numpy()]
                 if not records:
-                    log_message(log_file, "Error", f"No records to insert into {target_table}",
-                                run_uuid=run_uuid, stepcounter="DataLoad_4", user=user, script_start_time=script_start_time)
-                    return False
+                    log_message(log_file, "Warning", f"No records to insert into {target_table}. Columns processed: {', '.join(df.columns)}. Marking dataset as 'Empty'.",
+                                run_uuid=run_uuid, stepcounter="DataLoad_5", user=user, script_start_time=script_start_time)
+                    if not update_dataset_empty_status(cur, dataset_id, log_file, run_uuid, user, script_start_time):
+                        return False
+                    conn.commit()
+                    return True
                 
                 # Prepare insert query
                 placeholders = ",".join(["%s"] * len(df.columns))
@@ -615,26 +668,6 @@ def generic_import(config_id):
                                 run_uuid=run_uuid, stepcounter="SchemaCheck_1", user=user, script_start_time=script_start_time)
                     log_message(log_file, "SchemaCheck", f"Source columns: {', '.join(source_columns)}",
                                 run_uuid=run_uuid, stepcounter="SchemaCheck_2", user=user, script_start_time=script_start_time)
-
-                    new_columns = [col for col in source_columns if col.lower() not in [tc.lower() for tc in table_columns]]
-                    missing_columns = [col for col in table_columns if col.lower() not in [sc.lower() for sc in source_columns] and col.lower() not in [f"{table_name}id", 'datasetid']]
-
-                    if config["importstrategyid"] == 1:
-                        if new_columns:
-                            if not add_columns_to_table(cur, config["target_table"], new_columns, column_lengths, log_file, run_uuid, user, script_start_time):
-                                success = False
-                                file_success = False
-                                continue
-                            conn.commit()
-                    elif config["importstrategyid"] == 2:
-                        pass
-                    elif config["importstrategyid"] == 3:
-                        if missing_columns:
-                            log_message(log_file, "Error", f"Missing required columns in source file: {', '.join(missing_columns)}",
-                                        run_uuid=run_uuid, stepcounter="SchemaCheck_3", user=user, script_start_time=script_start_time)
-                            success = False
-                            file_success = False
-                            continue
 
                     metadata_label = parse_metadata(filename, config, config["metadata_label_source"],
                                                    config["metadata_label_location"], config["delimiter"],

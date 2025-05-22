@@ -370,7 +370,8 @@ BEGIN
             ('Inactive', 'Dataset is no longer active but retained for history'),
             ('Deleted', 'Dataset has been marked for deletion'),
             ('New', 'Default status of every new dataset'),
-            ('Failed', 'Status if something goes wrong')
+            ('Failed', 'Status if something goes wrong'),
+            ('Empty', 'Dataset has no data'),
             ;
         RAISE NOTICE 'Line 276: Inserted data into tdatastatus';
     END IF;
