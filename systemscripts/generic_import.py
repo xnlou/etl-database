@@ -162,12 +162,34 @@ def get_table_columns(cursor, table_name, log_file, run_uuid, user, script_start
                     run_uuid=run_uuid, stepcounter="TableColumns_1", user=user, script_start_time=script_start_time)
         return []
 
+def get_table_column_lengths(cursor, table_name, log_file, run_uuid, user, script_start_time):
+    """Get the maximum length of each VARCHAR column in the table."""
+    try:
+        cursor.execute("""
+            SELECT column_name, character_maximum_length
+            FROM information_schema.columns
+            WHERE table_schema || '.' || table_name = %s
+              AND data_type = 'character varying';
+        """, (table_name,))
+        column_lengths = {row[0]: row[1] for row in cursor.fetchall()}
+        log_message(log_file, "TableColumnLengths", f"Column lengths for {table_name}: {column_lengths}",
+                    run_uuid=run_uuid, stepcounter="TableColumnLengths_0", user=user, script_start_time=script_start_time)
+        return column_lengths
+    except Exception as e:
+        log_message(log_file, "Error", f"Failed to get column lengths for {table_name}: {str(e)}",
+                    run_uuid=run_uuid, stepcounter="TableColumnLengths_1", user=user, script_start_time=script_start_time)
+        return {}
+
 def get_column_lengths(df):
-    """Determine the maximum length of data in each column."""
+    """Determine the maximum length of data in each column with a safety margin."""
     lengths = {}
     for col in df.columns:
-        max_length = df[col].astype(str).str.len().max()
-        lengths[col] = max_length if not pd.isna(max_length) else 255
+        # Replace NaN/None with empty string to avoid underestimation
+        series = df[col].fillna('').astype(str)
+        max_length = series.str.len().max()
+        # Apply a 1.5x safety margin, cap at 4000 to avoid excessive lengths
+        safe_length = min(int(max_length * 1.5) if not pd.isna(max_length) else 255, 4000)
+        lengths[col] = safe_length
     return lengths
 
 def ensure_lookup_ids(cursor, datasource, dataset_type, user, log_file, run_uuid, script_start_time):
@@ -256,31 +278,47 @@ def update_dataset_status(cursor, dataset_id, datasource_id, dataset_type_id, la
                     run_uuid=run_uuid, stepcounter="DatasetUpdate_1", user=user, script_start_time=script_start_time)
 
 def add_columns_to_table(cursor, table_name, new_columns, column_lengths, log_file, run_uuid, user, script_start_time):
-    """Add new columns to the target table with appropriate VARCHAR length."""
+    """Add new columns or update existing ones to the target table with appropriate VARCHAR length."""
     try:
+        # Get current column lengths
+        existing_lengths = get_table_column_lengths(cursor, table_name, log_file, run_uuid, user, script_start_time)
+        
         for column in new_columns:
             column_lower = column.lower().replace(' ', '_').replace('-', '_')
-            varchar_length = 1000 if column_lengths.get(column, 255) > 255 else 255
-            cursor.execute(f"""
-                ALTER TABLE {table_name}
-                ADD COLUMN IF NOT EXISTS "{column_lower}" VARCHAR({varchar_length});
-            """)
-            log_message(log_file, "SchemaUpdate", f"Added column {column_lower} as VARCHAR({varchar_length}) to {table_name}",
-                        run_uuid=run_uuid, stepcounter=f"SchemaUpdate_{column_lower}", user=user, script_start_time=script_start_time)
+            required_length = min(column_lengths.get(column, 1000), 4000)  # Default to 1000, cap at 4000
+            existing_length = existing_lengths.get(column_lower)
+            
+            if existing_length is None:
+                # Add new column
+                cursor.execute(f"""
+                    ALTER TABLE {table_name}
+                    ADD COLUMN IF NOT EXISTS "{column_lower}" VARCHAR({required_length});
+                """)
+                log_message(log_file, "SchemaUpdate", f"Added column {column_lower} as VARCHAR({required_length}) to {table_name}",
+                            run_uuid=run_uuid, stepcounter=f"SchemaUpdate_{column_lower}", user=user, script_start_time=script_start_time)
+            elif existing_length < required_length:
+                # Update existing column length
+                cursor.execute(f"""
+                    ALTER TABLE {table_name}
+                    ALTER COLUMN "{column_lower}" TYPE VARCHAR({required_length});
+                """)
+                log_message(log_file, "SchemaUpdate", f"Updated column {column_lower} to VARCHAR({required_length}) in {table_name}",
+                            run_uuid=run_uuid, stepcounter=f"SchemaUpdate_{column_lower}", user=user, script_start_time=script_start_time)
         return True
     except psycopg2.Error as e:
-        log_message(log_file, "Error", f"Failed to add columns to {table_name}: {str(e)}",
+        log_message(log_file, "Error", f"Failed to add or update columns in {table_name}: {str(e)}",
                     run_uuid=run_uuid, stepcounter="SchemaUpdate_Error", user=user, script_start_time=script_start_time)
         return False
 
 def load_data_to_postgres(df, target_table, dataset_id, metadata_label, event_date, log_file, run_uuid, user, script_start_time):
-    """Load DataFrame to PostgreSQL table with datasetid, metadata, and date."""
+    """Load DataFrame to PostgreSQL table with datasetid, metadata, and date, truncating long values."""
     try:
         with psycopg2.connect(**DB_PARAMS) as conn:
             with conn.cursor() as cur:
-                # Get table columns
+                # Get table columns and their lengths
                 table_columns = get_table_columns(cur, target_table, log_file, run_uuid, user, script_start_time)
                 table_columns_lower = [col.lower() for col in table_columns]
+                table_column_lengths = get_table_column_lengths(cur, target_table, log_file, run_uuid, user, script_start_time)
                 log_message(log_file, "DataLoadPrep", f"Table columns for {target_table}: {', '.join(table_columns)}",
                             run_uuid=run_uuid, stepcounter="DataLoadPrep_0", user=user, script_start_time=script_start_time)
                 
@@ -318,6 +356,19 @@ def load_data_to_postgres(df, target_table, dataset_id, metadata_label, event_da
                             run_uuid=run_uuid, stepcounter="DataLoadPrep_2", user=user, script_start_time=script_start_time)
                 
                 df = df[matching_columns].rename(columns=column_mapping)
+                
+                # Truncate values to fit column lengths
+                for col in df.columns:
+                    col_lower = col.lower()
+                    max_length = table_column_lengths.get(col_lower, 255)  # Default to 255 if unknown
+                    if max_length:
+                        # Convert to string and truncate
+                        df[col] = df[col].astype(str).str.slice(0, max_length)
+                        # Log any truncated values
+                        long_values = df[df[col].str.len() >= max_length][col]
+                        if not long_values.empty:
+                            log_message(log_file, "Warning", f"Truncated {len(long_values)} values in column {col} to {max_length} characters",
+                                        run_uuid=run_uuid, stepcounter=f"DataLoad_Truncate_{col}", user=user, script_start_time=script_start_time)
                 
                 # Check DataFrame state
                 if df.empty:
@@ -485,7 +536,7 @@ def generic_import(config_id):
             try:
                 xls_to_csv(file_path)
                 if not os.path.exists(csv_path):
-                    log_message(log_file, "Error", f"Failed to find CSV at {csv_path} after conversion of {filename}",
+                    log_message(log_file, "Error", f"Failed to find CSV at {csv_path} after conversion of {filename}. Check xls_to_csv log at {LOG_DIR}/xls_to_csv_{timestamp}.txt",
                                 run_uuid=run_uuid, stepcounter=f"File_{filename}_4", user=user, script_start_time=script_start_time)
                     success = False
                     file_success = False
@@ -493,7 +544,7 @@ def generic_import(config_id):
                 log_message(log_file, "Conversion", f"Converted {filename} to {csv_path}",
                             run_uuid=run_uuid, stepcounter=f"File_{filename}_5", user=user, script_start_time=script_start_time)
             except Exception as e:
-                log_message(log_file, "Error", f"Conversion error for {filename}: {str(e)}\n{traceback.format_exc()}",
+                log_message(log_file, "Error", f"Conversion error for {filename}: {str(e)}\n{traceback.format_exc()}. Check xls_to_csv log at {LOG_DIR}/xls_to_csv_{timestamp}.txt",
                             run_uuid=run_uuid, stepcounter=f"File_{filename}_6", user=user, script_start_time=script_start_time)
                 success = False
                 file_success = False
@@ -503,6 +554,16 @@ def generic_import(config_id):
             df = pd.read_csv(csv_path)
             log_message(log_file, "Processing", f"Read {len(df)} rows from {csv_path} with columns: {', '.join(df.columns)}",
                         run_uuid=run_uuid, stepcounter=f"File_{filename}_7", user=user, script_start_time=script_start_time)
+            
+            # Validate data for long values
+            column_lengths = get_column_lengths(df)
+            for col, length in column_lengths.items():
+                if length > 1000:
+                    log_message(log_file, "Warning", f"Column {col} has maximum length {length} exceeding 1000 characters. Values may be truncated.",
+                                run_uuid=run_uuid, stepcounter=f"File_{filename}_Validate_{col}", user=user, script_start_time=script_start_time)
+            
+            log_message(log_file, "Processing", f"Computed column lengths: {column_lengths}",
+                        run_uuid=run_uuid, stepcounter=f"File_{filename}_9", user=user, script_start_time=script_start_time)
         except Exception as e:
             log_message(log_file, "Error", f"Failed to read CSV {csv_path}: {str(e)}\n{traceback.format_exc()}",
                         run_uuid=run_uuid, stepcounter=f"File_{filename}_8", user=user, script_start_time=script_start_time)
@@ -510,17 +571,6 @@ def generic_import(config_id):
             file_success = False
             if csv_path != file_path and os.path.exists(csv_path):
                 os.remove(csv_path)
-            continue
-
-        try:
-            column_lengths = get_column_lengths(df)
-            log_message(log_file, "Processing", f"Computed column lengths: {column_lengths}",
-                        run_uuid=run_uuid, stepcounter=f"File_{filename}_9", user=user, script_start_time=script_start_time)
-        except Exception as e:
-            log_message(log_file, "Error", f"Failed to compute column lengths for {filename}: {str(e)}\n{traceback.format_exc()}",
-                        run_uuid=run_uuid, stepcounter=f"File_{filename}_10", user=user, script_start_time=script_start_time)
-            success = False
-            file_success = False
             continue
 
         with psycopg2.connect(**DB_PARAMS) as conn:
@@ -534,7 +584,7 @@ def generic_import(config_id):
                             columns.append('"datasetid" INT NOT NULL REFERENCES dba.tdataset(datasetid)')
                             for col in df.columns:
                                 col_lower = col.lower().replace(' ', '_').replace('-', '_')
-                                varchar_length = 1000 if column_lengths.get(col, 255) > 255 else 255
+                                varchar_length = min(column_lengths.get(col, 1000), 4000)  # Default to 1000, cap at 4000
                                 columns.append(f'"{col_lower}" VARCHAR({varchar_length})')
                             create_query = f"""
                                 CREATE TABLE {config["target_table"]} (
