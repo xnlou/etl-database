@@ -36,7 +36,7 @@ MAX_WORKERS = 1
 
 # Database connection parameters
 DB_PARAMS = {
-    "dbname": "Feeds",
+    "dbname": "feeds",
     "user": "yostfundsadmin",
     "password": "etlserver2025!",
     "host": "localhost"
