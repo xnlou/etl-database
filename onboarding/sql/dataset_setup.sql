@@ -1,5 +1,5 @@
 -- dataset_setup.sql
--- Description: Sets up tables in the dba schema to track dataset metadata for the ETL pipeline.
+-- Description: Sets up tables and functions in the dba schema to track dataset metadata for the ETL pipeline.
 -- Naming Conventions: t for tables, f for functions, p for procedures, v for views.
 -- Idempotency: Each object creation is guarded by an existence check to prevent errors on rerun.
 
@@ -239,10 +239,131 @@ BEGIN
     RAISE NOTICE 'Line 183: Completed tTriggerEnforceSingleActiveDataSet block';
 END $OUTER$;
 
-
+-- Line 186: Create function f_dataset_iu if it doesn't exist
 DO $OUTER$
 BEGIN
-    RAISE NOTICE 'Line 208: Starting insert into tDataStatus';
+    RAISE NOTICE 'Line 186: Starting creation of f_dataset_iu function';
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_proc
+        WHERE pronamespace = (SELECT oid FROM pg_namespace WHERE nspname = 'dba')
+        AND proname = 'f_dataset_iu'
+    ) THEN
+        CREATE OR REPLACE FUNCTION dba.f_dataset_iu(
+            p_datasetid INT,
+            p_datasetdate DATE,
+            p_datasettype VARCHAR,
+            p_datasource VARCHAR,
+            p_label VARCHAR,
+            p_statusname VARCHAR,
+            p_createduser VARCHAR
+        ) RETURNS INT
+        LANGUAGE plpgsql
+        AS $INNER$
+        DECLARE
+            v_datasettypeid INT;
+            v_datasourceid INT;
+            v_datastatusid INT;
+            v_efffromdate TIMESTAMP;
+            v_effthrudate TIMESTAMP;
+            v_datasetid INT;
+        BEGIN
+            -- Set effective dates
+            v_efffromdate := CURRENT_TIMESTAMP;
+            v_effthrudate := '9999-01-01';
+
+            -- Resolve datasettypeid
+            SELECT datasettypeid INTO v_datasettypeid 
+            FROM dba.tdatasettype 
+            WHERE typename = p_datasettype;
+            IF v_datasettypeid IS NULL THEN
+                RAISE EXCEPTION 'Dataset type % not found', p_datasettype;
+            END IF;
+
+            -- Resolve datasourceid
+            SELECT datasourceid INTO v_datasourceid 
+            FROM dba.tdatasource 
+            WHERE sourcename = p_datasource;
+            IF v_datasourceid IS NULL THEN
+                RAISE EXCEPTION 'Data source % not found', p_datasource;
+            END IF;
+
+            -- Resolve datastatusid
+            SELECT datastatusid INTO v_datastatusid 
+            FROM dba.tdatastatus 
+            WHERE statusname = p_statusname;
+            IF v_datastatusid IS NULL THEN
+                RAISE EXCEPTION 'Data status % not found', p_statusname;
+            END IF;
+
+            IF p_datasetid IS NULL THEN
+                -- Insert new dataset with 'New' status
+                INSERT INTO dba.tdataset (
+                    datasetdate,
+                    label,
+                    datasettypeid,
+                    datasourceid,
+                    datastatusid,
+                    isactive,
+                    createddate,
+                    createdby,
+                    efffromdate,
+                    effthrudate
+                ) VALUES (
+                    p_datasetdate,
+                    p_label,
+                    v_datasettypeid,
+                    v_datasourceid,
+                    v_datastatusid,
+                    FALSE,  -- New datasets are not active by default
+                    CURRENT_TIMESTAMP,
+                    p_createduser,
+                    v_efffromdate,
+                    v_effthrudate
+                ) RETURNING datasetid INTO v_datasetid;
+            ELSE
+                -- Update existing dataset
+                UPDATE dba.tdataset
+                SET datastatusid = v_datastatusid,
+                    isactive = CASE WHEN p_statusname = 'Active' THEN TRUE ELSE isactive END
+                WHERE datasetid = p_datasetid;
+
+                IF p_statusname = 'Active' THEN
+                    -- Deactivate other datasets with the same label, type, and date
+                    UPDATE dba.tdataset
+                    SET isactive = FALSE,
+                        effthrudate = CURRENT_TIMESTAMP,
+                        datastatusid = (SELECT datastatusid FROM dba.tdatastatus WHERE statusname = 'Inactive')
+                    WHERE label = p_label
+                      AND datasettypeid = v_datasettypeid
+                      AND datasetdate = p_datasetdate
+                      AND datasetid != p_datasetid
+                      AND isactive = TRUE;
+                END IF;
+                v_datasetid := p_datasetid;
+            END IF;
+
+            RETURN v_datasetid;
+        END;
+        $INNER$;
+        COMMENT ON FUNCTION dba.f_dataset_iu IS 'Inserts or updates a dataset in tDataSet, resolving type, source, and status IDs, and managing active status.';
+        RAISE NOTICE 'Line 260: f_dataset_iu function created';
+    END IF;
+    RAISE NOTICE 'Line 262: Completed f_dataset_iu block';
+END $OUTER$;
+
+-- Grant permissions on f_dataset_iu
+DO $OUTER$
+BEGIN
+    RAISE NOTICE 'Line 266: Granting permissions on f_dataset_iu';
+    GRANT EXECUTE ON FUNCTION dba.f_dataset_iu(INT, DATE, VARCHAR, VARCHAR, VARCHAR, VARCHAR, VARCHAR) TO etl_user;
+    RAISE NOTICE 'Line 268: Permissions granted on f_dataset_iu';
+END $OUTER$;
+
+-- Line 271: Insert data into tDataStatus if the table is empty
+DO $OUTER$
+BEGIN
+    RAISE NOTICE 'Line 271: Starting insert into tDataStatus';
     IF (SELECT COUNT(*) FROM dba.tDataStatus) = 0 THEN
         INSERT INTO dba.tDataStatus (StatusName, Description) VALUES
             ('Active', 'Dataset is currently active and in use'),
@@ -251,7 +372,7 @@ BEGIN
             ('New', 'Default status of every new dataset'),
             ('Failed', 'Status if something goes wrong')
             ;
-        RAISE NOTICE 'Line 213: Inserted data into tDataStatus';
+        RAISE NOTICE 'Line 276: Inserted data into tDataStatus';
     END IF;
-    RAISE NOTICE 'Line 215: Completed tDataStatus insert block';
+    RAISE NOTICE 'Line 278: Completed tDataStatus insert block';
 END $OUTER$;
