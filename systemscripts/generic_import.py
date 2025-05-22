@@ -52,7 +52,7 @@ def get_config(config_id, log_file, run_uuid, user, script_start_time):
                 cur.execute("""
                     SELECT config_name, datasource, datasettype, source_directory, archive_directory,
                            file_pattern, file_type, metadata_label_source, metadata_label_location,
-                           dateconfig, datelocation, delimiter, target_table, importstrategyid, is_active, dateformat
+                           dateconfig, datelocation, dateformat, delimiter, target_table, importstrategyid, is_active
                     FROM dba.timportconfig
                     WHERE config_id = %s AND is_active = '1';
                 """, (config_id,))
@@ -76,8 +76,7 @@ def get_config(config_id, log_file, run_uuid, user, script_start_time):
                     "dateformat": config[11],
                     "delimiter": config[12],
                     "target_table": config[13],
-                    "importstrategyid": config[14],
-                    "dateformat": config[15]
+                    "importstrategyid": config[14]
                 }
     except psycopg2.Error as e:
         log_message(log_file, "Error", f"Database error fetching config_id {config_id}: {str(e)}",
