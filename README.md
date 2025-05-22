@@ -1,124 +1,76 @@
 # Client ETL Workflow Project
 
 ## Project Overview
-This project sets up an automated ETL (Extract, Transform, Load) pipeline on a Linux Mint Desktop for managing client data workflows in a homelab environment. The pipeline is designed to:
-- Scrape data from websites.
-- Convert client XLSX/XLS files to CSV.
-- Process and load data into a PostgreSQL database.
-- Send email reports to clients with job status or data summaries.
-- Support secure client file exchanges via SFTP or cloud-based sharing.
+The **Client ETL Workflow Project** establishes an automated Extract, Transform, Load (ETL) pipeline on a Linux Mint Desktop, designed for managing client data workflows in a homelab environment. The pipeline automates data ingestion, processing, and reporting, ensuring secure and efficient handling of client data. Key functionalities include:
+
+- **Web Scraping**: Extracts data from static websites (e.g., MeetMax event pages) using Python scripts like `meetmax_url_check.py`.
+- **File Conversion**: Converts client XLS/XLSX files to CSV using `xls_to_csv.py` with `openpyxl` and `xlrd`.
+- **Data Processing and Loading**: Transforms data using `pandas` and loads it into a PostgreSQL database via `generic_import.py` with `psycopg2`.
+- **Email Reporting**: Supports automated email notifications for job status or data summaries using `smtplib` (to be implemented).
+- **Secure File Exchange**: Facilitates client file sharing via SFTP or cloud-based solutions, with strong authentication and encryption.
 
 ### Project Goals
-- **Automation**: Automate weekly ETL runs with minimal maintenance using Bash and Python scripts.
-- **Security**: Implement SSL/TLS for database and email interactions, and use strong authentication for file exchanges.
-- **Scalability**: Handle light data volumes (~1–10 MB/run) with potential for moderate growth.
-- **Accessibility**: Provide GUI tools (DBeaver, pgAdmin) for easy database management.
-- **Traceability**: Maintain detailed logs for debugging and monitoring.
+- **Automation**: Executes weekly ETL runs with minimal maintenance using Bash and Python scripts, scheduled via cron.
+- **Security**: Implements SSL/TLS for database and email interactions, uses strong authentication, and secures file permissions.
+- **Scalability**: Handles light data volumes (~1–10 MB/run) with flexibility for moderate growth.
+- **Traceability**: Logs all operations to CSV, TXT, and PostgreSQL for debugging and monitoring.
+- **Maintainability**: Uses open-source tools and a modular structure for easy updates and extensions.
+
+## How It Works
+The ETL pipeline operates as a series of modular scripts coordinated within a structured directory environment:
+
+1. **Setup and Configuration**:
+   - `configure_etl_user.sh`: Creates an `etl_user` and `etl_group`, sets up directories (`/home/$USER/client_etl_workflow`), and configures cron for scheduling.
+   - `install_dependencies.sh`: Installs PostgreSQL, Python 3.12, Git, DBeaver, and Python dependencies (`pandas`, `scrapy`, `openpyxl`, etc.) in a virtual environment.
+   - `directory_management.py`: Ensures consistent directory structure for logs, file processing, and scripts.
+
+2. **Data Extraction**:
+   - `meetmax_url_check.py`: Scrapes MeetMax event pages to identify valid URLs and downloadable XLS files, saving results to CSV and PostgreSQL (`public.tmeetmaxurlcheck`).
+   - `meetmax_url_download.py`: Downloads XLS files from identified URLs, storing them in `file_watcher/` for further processing.
+
+3. **Data Transformation**:
+   - `xls_to_csv.py`: Converts downloaded XLS/XLSX files to CSV, handling both modern (`openpyxl`) and legacy (`xlrd`) formats.
+   - `generic_import.py`: Reads CSV files, applies transformations based on configurations in `dba.timportconfig`, and prepares data for database loading.
+
+4. **Data Loading**:
+   - `generic_import.py`: Loads transformed data into PostgreSQL tables (e.g., `dba.tmeetmax`), dynamically creating tables or adding columns based on the import strategy. It manages metadata, dataset IDs, and ensures data integrity.
+
+5. **Logging and Monitoring**:
+   - `log_utils.py`: Records detailed logs to CSV, TXT, and PostgreSQL (`dba.tLogEntry`), capturing timestamps, process types, and run UUIDs for traceability.
+   - Logs are stored in `/home/$USER/client_etl_workflow/logs/` with permissions set to `660` for security.
+
+6. **Automation**:
+   - `run_python_etl_script.sh`: A wrapper script that activates the Python virtual environment and runs ETL scripts, ensuring consistent execution.
+   - Cron jobs (configured in `/etc/cron.d/etl_jobs`) schedule weekly runs, logging output to `logs/etl_cron.log`.
+
+7. **Secure File Exchange**:
+   - Supports SFTP for client file uploads/downloads, with SSH enabled by `install_dependencies.sh`.
+   - File permissions are set to `660` or `770` for `etl_group` access, ensuring secure handling.
 
 ## Prerequisites
 - **Operating System**: Linux Mint Desktop.
 - **Hardware**: 16GB RAM, 500GB storage, stable internet connection.
-- **Access**: User with sudo privileges to run installation scripts.
+- **Access**: User with sudo privileges for installation scripts.
+- **Dependencies**: Installed via `install_dependencies.sh` (see Installation Instructions).
 
 ## Directory Structure
-The project uses the following directory structure under `/home/$USER/client_etl_workflow`:
-- `archive/`: Stores archived files.
+The project is organized under `/home/$USER/client_etl_workflow`:
+- `archive/`: Stores processed files after import.
 - `file_watcher/`: Monitors incoming client files.
-  - `file_watcher_temp/`: Temporary storage for file processing.
-- `jobscripts/`: Contains ETL scripts (e.g., `meetmax_url_check.py`).
-- `logs/`: Stores log files for all scripts.
-- `onboarding/`: For onboarding-related files.
-- `systemscripts/`: Utility scripts (e.g., `log_utils.py`).
-- `venv/`: Python virtual environment for dependencies.
+  - `file_watcher_temp/`: Temporary storage for intermediate files.
+- `jobscripts/`: ETL scripts (e.g., `meetmax_url_check.py`, `meetmax_url_download.py`).
+- `logs/`: Stores CSV and TXT log files for all operations.
+- `systemscripts/`: Utility scripts (e.g., `log_utils.py`, `xls_to_csv.py`).
+- `venv/`: Python virtual environment with dependencies.
 
 ## Installation Instructions
 
 ### Script Execution Order
-To set up the ETL server, run the scripts in the following order. Ensure each script completes successfully before proceeding to the next one.
+Run the following scripts in order to set up the ETL pipeline. Each script logs its progress for troubleshooting.
 
-1. **[Optional] `CL_onboarding.sh`**  
-   This script is for personal setup and not strictly part of the ETL pipeline. It downloads a repository ZIP and installs additional software for convenience.
-   - **Purpose**: Installs personal tools (Caffeine, AnyDesk, Brave Browser, Discord) and downloads the project repository as a ZIP.
-   - **Run Command**:
-     ```bash
-     chmod +x CL_onboarding.sh
-     ./CL_onboarding.sh
-     ```
-   - **Log File**: Check `/home/$USER/CL_onboarding_YYYYMMDD_HHMMSS.log` for details.
-
-2. **`disable_power_saving.sh`**  
-   This script disables power-saving features to ensure the server runs 24/7 without sleeping or suspending.
-   - **Purpose**: Disables GUI sleep/suspend, console blanking, and systemd sleep states.
-   - **Run Command**:
-     ```bash
-     chmod +x disable_power_saving.sh
-     ./disable_power_saving.sh
-     ```
-   - **Log File**: Check `/home/$USER/disable_power_saving_YYYYMMDD_HHMMSS.log` for details.
-
-3. **`configure_etl_user.sh`**  
-   This script sets up the user, group, and directory structure for the ETL pipeline.
-   - **Purpose**: Creates `etl_user` and `etl_group`, sets up the project directory structure, and configures a cron job for automated ETL runs.
+1. **`configure_etl_user.sh`**  
+   Sets up the user, group, and directory structure, and configures a cron job.
    - **Run Command**:
      ```bash
      chmod +x configure_etl_user.sh
      ./configure_etl_user.sh
-     ```
-   - **Log File**: Check `/home/$USER/client_etl_workflow/logs/configure_etl_user.log` for details.
-
-4. **`install_dependencies.sh`**  
-   This script installs all necessary dependencies and configures the environment.
-   - **Purpose**: Installs PostgreSQL, Python 3.12, Git, DBeaver, pgAdmin, Visual Studio Code, and other dependencies, sets up a PostgreSQL user, and configures a Python virtual environment.
-   - **Run Command**:
-     ```bash
-     chmod +x install_dependencies.sh
-     ./install_dependencies.sh
-     ```
-   - **Log File**: Check `/home/$USER/client_etl_workflow/logs/install_dependencies.log` for details.
-
-### Post-Installation Steps
-- **Database Setup**: After installation, use DBeaver or pgAdmin to connect to your PostgreSQL database:
-  - Host: `localhost`
-  - Database: `postgres`
-  - User: Your username (set by `install_dependencies.sh`)
-  - Password: `etlserver2025!`
-  Create a new database for your ETL data (e.g., `etl_db`) and set up tables as needed.
-- **Cron Job Configuration**: The `configure_etl_user.sh` script sets up a cron job for `etl_user`. Update the script path in `/etc/cron.d/etl_jobs` to point to your ETL script (e.g., `/home/$USER/client_etl_workflow/jobscripts/meetmax_url_check.sh`).
-- **Secure File Exchange**: Set up SFTP or a cloud-based solution (e.g., Nextcloud) for client file sharing, ensuring strong authentication and encryption.
-
-## Additional Notes
-- **Logging**: Each script generates a log file in `/home/$USER/client_etl_workflow/logs/` (except `CL_onboarding.sh` and `disable_power_saving.sh`, which log to `/home/$USER/`). Check these logs for debugging issues.
-- **Maintenance**:
-  - Regularly check disk space (`df -h`) to ensure storage isn’t running low.
-  - Monitor PostgreSQL performance and optimize queries if data volume grows.
-  - Update dependencies periodically with `sudo apt update && sudo apt upgrade`.
-- **Security**:
-  - Use SSL/TLS for PostgreSQL connections (configured in `install_dependencies.sh`).
-  - Ensure strong passwords for all accounts, including `etl_user` and PostgreSQL roles.
-  - Configure a firewall (`ufw`) to restrict access:
-    ```bash
-    sudo ufw allow ssh
-    sudo ufw allow 5432/tcp  # PostgreSQL
-    sudo ufw enable
-    ```
-- **Backups**:
-  - Schedule regular database backups with `pg_dump`:
-    ```bash
-    pg_dump -U your_username etl_db > /path/to/backups/etl_db_$(date +%Y%m%d).sql
-    ```
-  - Back up key directories (e.g., `logs`, `archive`) using `rsync`:
-    ```bash
-    rsync -av /home/$USER/client_etl_workflow/ /backup/location/
-    ```
-
-## Troubleshooting
-- **Script Fails**: Check the relevant log file for error messages. Common issues include network connectivity, missing dependencies, or permission errors.
-- **PostgreSQL Connection Issues**: Verify the user credentials and ensure the service is running (`sudo systemctl status postgresql`).
-- **Cron Job Not Running**: Check `/etc/cron.d/etl_jobs` for the correct script path and ensure the cron service is active (`sudo systemctl status cron`).
-- **Server Goes to Sleep**: If the system still enters sleep mode, verify the changes made by `disable_power_saving.sh` in `/etc/default/grub` and `/etc/systemd/logind.conf`. Reboot to ensure GRUB changes take effect.
-
-
-## Future Enhancements
-- Add monitoring with tools like Prometheus or Nagios to track system and ETL job performance.
-- Implement email notifications for script failures using `smtplib` in Python.
-- Expand the ETL pipeline to support larger data volumes or additional data sources.
