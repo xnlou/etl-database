@@ -165,9 +165,10 @@ BEGIN
 END;
 $$;
 
--- Inserting example configuration for MeetMaxURLCheckImport using the insert procedure
+-- Inserting configurations using the insert procedure
 DO $$
 BEGIN
+    -- Insert MeetMaxURLCheckImport configuration
     IF NOT EXISTS (SELECT 1 FROM dba."timportconfig" WHERE config_name = 'MeetMaxURLCheckImport') THEN
         CALL dba.pimportconfigI(
             'MeetMaxURLCheckImport',
@@ -184,29 +185,50 @@ BEGIN
             'yyyyMMddTHHmmss',
             '_',
             'public.tmeetmaxurlcheck',
-            1, -- Import and create new columns if needed
+            1,
             '1'::BIT(1)
         );
     ELSE
         -- Update existing configuration to match new settings
         CALL dba.pimportconfigU(
-            1, -- config_id
-            NULL, -- config_name (unchanged)
-            NULL, -- DataSource
-            NULL, -- DataSetType
-            NULL, -- source_directory
-            NULL, -- archive_directory
-            NULL, -- file_pattern
-            NULL, -- file_type
-            'static', -- metadata_label_source
-            'MeetMaxURLCheck', -- metadata_label_location
-            'filename', -- DateConfig
-            '0', -- DateLocation
-            'yyyyMMddTHHmmss', -- DateFormat
-            '_', -- delimiter
-            NULL, -- target_table
-            NULL, -- ImportStrategyID
-            NULL -- is_active
+            1,
+            NULL,
+            NULL,
+            NULL,
+            NULL,
+            NULL,
+            NULL,
+            'static',
+            'MeetMaxURLCheck',
+            'filename',
+            '0',
+            'yyyyMMddTHHmmss',
+            '_',
+            NULL,
+            NULL,
+            NULL
+        );
+    END IF;
+
+    -- Insert MeetMax_Events_XLS_Import configuration
+    IF NOT EXISTS (SELECT 1 FROM dba."timportconfig" WHERE config_name = 'MeetMax_Events_XLS_Import') THEN
+        CALL dba.pimportconfigI(
+            'MeetMax_Events_XLS_Import',
+            'MeetMax',
+            'MetaData',
+            '/home/yostfundsadmin/client_etl_workflow/file_watcher',
+            '/home/yostfundsadmin/client_etl_workflow/archive/meetmaxevents',
+            '^\d{8}T\d{6}_MeetMax_\d+\.xls$',
+            'XLS',
+            'filename',
+            '2',
+            'filename',
+            '0',
+            'yyyyMMddTHHmmss',
+            '_',
+            'public.tmeetmaxevent',
+            1,
+            '1'::BIT(1)
         );
     END IF;
 END;
