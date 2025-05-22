@@ -350,6 +350,32 @@ def add_columns_to_table(cursor, table_name, new_columns, column_lengths, log_fi
                     run_uuid=run_uuid, stepcounter="SchemaUpdate_Error", user=user, script_start_time=script_start_time)
         return False
 
+def is_invalid_event_file(file_path, log_file, run_uuid, user, script_start_time):
+    """Check if an XLS file contains 'Invalid Event ID' or similar content."""
+    try:
+        # Try openpyxl first (default for project)
+        df = pd.read_excel(file_path, header=None, engine='openpyxl')
+        first_column = df.iloc[:, 0].astype(str).str.strip()
+        if first_column.str.contains('Invalid Event ID', case=False, na=False).any():
+            log_message(log_file, "Warning", f"File {file_path} contains 'Invalid Event ID' (openpyxl). Treating as empty dataset.",
+                        run_uuid=run_uuid, stepcounter="FileValidation_0", user=user, script_start_time=script_start_time)
+            return True, True  # is_invalid, is_readable
+        return False, True
+    except Exception as e_openpyxl:
+        # Try xlrd as fallback for legacy .xls files
+        try:
+            df = pd.read_excel(file_path, header=None, engine='xlrd')
+            first_column = df.iloc[:, 0].astype(str).str.strip()
+            if first_column.str.contains('Invalid Event ID', case=False, na=False).any():
+                log_message(log_file, "Warning", f"File {file_path} contains 'Invalid Event ID' (xlrd). Treating as empty dataset.",
+                            run_uuid=run_uuid, stepcounter="FileValidation_0", user=user, script_start_time=script_start_time)
+                return True, True
+            return False, True
+        except Exception as e_xlrd:
+            log_message(log_file, "Warning", f"Failed to read XLS {file_path} with openpyxl or xlrd: openpyxl error: {str(e_openpyxl)}, xlrd error: {str(e_xlrd)}. Treating as empty dataset.",
+                        run_uuid=run_uuid, stepcounter="FileValidation_1", user=user, script_start_time=script_start_time)
+            return False, False  # is_invalid, is_readable
+
 def load_data_to_postgres(df, target_table, dataset_id, metadata_label, event_date, log_file, run_uuid, user, script_start_time):
     """Load DataFrame to PostgreSQL table with datasetid, metadata, and date, handling empty files."""
     try:
@@ -583,6 +609,36 @@ def generic_import(config_id):
                     file_success = False
                     continue
 
+        # Check if the file is an 'Invalid Event ID' file or unreadable
+        if config["file_type"] in ["XLS", "XLSX"]:
+            is_invalid, is_readable = is_invalid_event_file(file_path, log_file, run_uuid, user, script_start_time)
+            if is_invalid or not is_readable:
+                with psycopg2.connect(**DB_PARAMS) as conn:
+                    with conn.cursor() as cur:
+                        if not update_dataset_empty_status(cur, dataset_id, log_file, run_uuid, user, script_start_time):
+                            success = False
+                            file_success = False
+                        else:
+                            archive_path = os.path.join(config["archive_directory"], filename)
+                            try:
+                                shutil.move(file_path, archive_path)
+                                os.chmod(archive_path, 0o660)
+                                try:
+                                    group_id = grp.getgrnam('etl_group').gr_gid
+                                    os.chown(archive_path, os.getuid(), group_id)
+                                    log_message(log_file, "Processing", f"Moved {filename} to {archive_path}",
+                                                run_uuid=run_uuid, stepcounter=f"File_{filename}_12", user=user, script_start_time=script_start_time)
+                                except KeyError:
+                                    log_message(log_file, "Warning", f"Group 'etl_group' not found; skipping chown for {archive_path}",
+                                                run_uuid=run_uuid, stepcounter=f"File_{filename}_13", user=user, script_start_time=script_start_time)
+                            except Exception as e:
+                                log_message(log_file, "Error", f"Failed to move {filename} to archive: {str(e)}\n{traceback.format_exc()}",
+                                            run_uuid=run_uuid, stepcounter=f"File_{filename}_13", user=user, script_start_time=script_start_time)
+                                success = False
+                                file_success = False
+                        conn.commit()
+                continue
+
         csv_path = file_path
         if config["file_type"] in ["XLS", "XLSX"]:
             csv_path = os.path.splitext(file_path)[0] + '.csv'
@@ -605,6 +661,42 @@ def generic_import(config_id):
 
         try:
             df = pd.read_csv(csv_path)
+            if df.empty and df.columns.empty:
+                log_message(log_file, "Warning", f"CSV {csv_path} has no headers or data. Marking dataset as 'Empty' and archiving.",
+                            run_uuid=run_uuid, stepcounter=f"File_{filename}_8", user=user, script_start_time=script_start_time)
+                with psycopg2.connect(**DB_PARAMS) as conn:
+                    with conn.cursor() as cur:
+                        if not update_dataset_empty_status(cur, dataset_id, log_file, run_uuid, user, script_start_time):
+                            success = False
+                            file_success = False
+                        else:
+                            archive_path = os.path.join(config["archive_directory"], filename)
+                            try:
+                                shutil.move(file_path, archive_path)
+                                os.chmod(archive_path, 0o660)
+                                try:
+                                    group_id = grp.getgrnam('etl_group').gr_gid
+                                    os.chown(archive_path, os.getuid(), group_id)
+                                    log_message(log_file, "Processing", f"Moved {filename} to {archive_path}",
+                                                run_uuid=run_uuid, stepcounter=f"File_{filename}_12", user=user, script_start_time=script_start_time)
+                                except KeyError:
+                                    log_message(log_file, "Warning", f"Group 'etl_group' not found; skipping chown for {archive_path}",
+                                                run_uuid=run_uuid, stepcounter=f"File_{filename}_13", user=user, script_start_time=script_start_time)
+                            except Exception as e:
+                                log_message(log_file, "Error", f"Failed to move {filename} to archive: {str(e)}\n{traceback.format_exc()}",
+                                            run_uuid=run_uuid, stepcounter=f"File_{filename}_13", user=user, script_start_time=script_start_time)
+                                success = False
+                                file_success = False
+                        conn.commit()
+                if csv_path != file_path and os.path.exists(csv_path):
+                    try:
+                        os.remove(csv_path)
+                        log_message(log_file, "Processing", f"Removed temporary CSV {csv_path}",
+                                    run_uuid=run_uuid, stepcounter=f"File_{filename}_16", user=user, script_start_time=script_start_time)
+                    except Exception as e:
+                        log_message(log_file, "Error", f"Failed to remove temporary CSV {csv_path}: {str(e)}\n{traceback.format_exc()}",
+                                    run_uuid=run_uuid, stepcounter=f"File_{filename}_17", user=user, script_start_time=script_start_time)
+                continue
             log_message(log_file, "Processing", f"Read {len(df)} rows from {csv_path} with columns: {', '.join(df.columns)}",
                         run_uuid=run_uuid, stepcounter=f"File_{filename}_7", user=user, script_start_time=script_start_time)
             
