@@ -4,6 +4,8 @@ logs/*.txt
 logs/*.log
 file_watcher/*.csv
 file_watcher/*.xls
+file_watcher/test/*.xls
+file_watcher/test/*.csv
 file_watcher/file_watcher_temp/*.csv
 file_watcher/file_watcher_temp/*.xls
 systemscripts/*.pyc
