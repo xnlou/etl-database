@@ -8,6 +8,7 @@ import pandas as pd
 import psycopg2
 from psycopg2 import sql
 from pathlib import Path
+import grp  # Added for getgrnam
 # Add root directory to sys.path
 sys.path.append(str(Path(__file__).parent.parent))
 from datetime import datetime
@@ -21,7 +22,7 @@ from systemscripts.xls_to_csv import xls_to_csv
 
 # Database connection parameters
 DB_PARAMS = {
-    "dbname": "Feeds",
+    "dbname": "feeds",
     "user": "yostfundsadmin",
     "password": "etlserver2025!",
     "host": "localhost"
@@ -33,7 +34,7 @@ def log_to_tlogentry(config_id, message, stepcounter, log_file, run_uuid, user, 
         with psycopg2.connect(**DB_PARAMS) as conn:
             with conn.cursor() as cur:
                 cur.execute("""
-                    INSERT INTO dba.tlogentry (timestamp, run_uuid, process_type, stepcounter, user_name, message)
+                    INSERT INTO dba.tlogentry (timestamp, run_uuid, processtype, stepcounter, username, message)
                     VALUES (%s, %s, %s, %s, %s, %s)
                 """, (datetime.now(), run_uuid, 'Import', stepcounter, user, message))
                 conn.commit()
@@ -49,9 +50,9 @@ def get_config(config_id, log_file, run_uuid, user, script_start_time):
         with psycopg2.connect(**DB_PARAMS) as conn:
             with conn.cursor() as cur:
                 cur.execute("""
-                    SELECT config_name, DataSource, DataSetType, source_directory, archive_directory,
+                    SELECT config_name, datasource, datasettype, source_directory, archive_directory,
                            file_pattern, file_type, metadata_label_source, metadata_label_location,
-                           DateConfig, DateLocation, delimiter, target_table, importstrategyid, is_active, dateformat
+                           dateconfig, datelocation, delimiter, target_table, importstrategyid, is_active, dateformat
                     FROM dba.timportconfig
                     WHERE config_id = %s AND is_active = '1';
                 """, (config_id,))
@@ -62,20 +63,21 @@ def get_config(config_id, log_file, run_uuid, user, script_start_time):
                     return None
                 return {
                     "config_name": config[0],
-                    "DataSource": config[1],
-                    "DataSetType": config[2],
+                    "datasource": config[1],
+                    "datasettype": config[2],
                     "source_directory": config[3],
                     "archive_directory": config[4],
                     "file_pattern": config[5],
                     "file_type": config[6],
                     "metadata_label_source": config[7],
                     "metadata_label_location": config[8],
-                    "DateConfig": config[9],
-                    "DateLocation": config[10],
-                    "delimiter": config[11],
-                    "target_table": config[12],
-                    "importstrategyid": config[13],
-                    "dateformat": config[14]
+                    "dateconfig": config[9],
+                    "datelocation": config[10],
+                    "dateformat": config[11],
+                    "delimiter": config[12],
+                    "target_table": config[13],
+                    "importstrategyid": config[14],
+                    "dateformat": config[15]
                 }
     except psycopg2.Error as e:
         log_message(log_file, "Error", f"Database error fetching config_id {config_id}: {str(e)}",
@@ -170,9 +172,9 @@ def get_column_lengths(df):
     return lengths
 
 def ensure_lookup_ids(cursor, datasource, dataset_type, user, log_file, run_uuid, script_start_time):
-    """Ensure DataSource and DataSetType exist in tDataSource and tDataSetType, inserting if necessary."""
+    """Ensure datasource and datasettype exist in tdatasource and tdatasettype, inserting if necessary."""
     try:
-        # Ensure DataSource exists
+        # Ensure datasource exists
         cursor.execute("""
             INSERT INTO dba.tdatasource (sourcename, createddate, createdby)
             VALUES (%s, CURRENT_TIMESTAMP, %s)
@@ -189,10 +191,10 @@ def ensure_lookup_ids(cursor, datasource, dataset_type, user, log_file, run_uuid
                 WHERE sourcename = %s;
             """, (datasource,))
             datasource_id = cursor.fetchone()[0]
-        log_message(log_file, "LookupInsert", f"Ensured DataSource {datasource} with DataSourceID {datasource_id}",
+        log_message(log_file, "LookupInsert", f"Ensured datasource {datasource} with datasourceid {datasource_id}",
                     run_uuid=run_uuid, stepcounter="LookupInsert_0", user=user, script_start_time=script_start_time)
 
-        # Ensure DataSetType exists
+        # Ensure datasettype exists
         cursor.execute("""
             INSERT INTO dba.tdatasettype (typename, createddate, createdby)
             VALUES (%s, CURRENT_TIMESTAMP, %s)
@@ -209,7 +211,7 @@ def ensure_lookup_ids(cursor, datasource, dataset_type, user, log_file, run_uuid
                 WHERE typename = %s;
             """, (dataset_type,))
             dataset_type_id = cursor.fetchone()[0]
-        log_message(log_file, "LookupInsert", f"Ensured DataSetType {dataset_type} with DataSetTypeID {dataset_type_id}",
+        log_message(log_file, "LookupInsert", f"Ensured datasettype {dataset_type} with datasettypeid {dataset_type_id}",
                     run_uuid=run_uuid, stepcounter="LookupInsert_1", user=user, script_start_time=script_start_time)
 
         return datasource_id, dataset_type_id
@@ -219,7 +221,7 @@ def ensure_lookup_ids(cursor, datasource, dataset_type, user, log_file, run_uuid
         return None, None
 
 def insert_dataset(cursor, config_name, dataset_date, label, datasource_id, dataset_type_id, log_file, run_uuid, user, script_start_time):
-    """Insert a new dataset into tDataSet and return its ID."""
+    """Insert a new dataset into tdataset and return its ID."""
     try:
         cursor.execute("""
             INSERT INTO dba.tdataset (datasetdate, label, datasettypeid, datasourceid, datastatusid, isactive, createddate, createdby, effthrudate)
@@ -227,7 +229,7 @@ def insert_dataset(cursor, config_name, dataset_date, label, datasource_id, data
             RETURNING datasetid;
         """, (dataset_date, label, dataset_type_id, datasource_id, user))
         dataset_id = cursor.fetchone()[0]
-        log_message(log_file, "DatasetInsert", f"Inserted dataset {config_name} with DataSetID {dataset_id}",
+        log_message(log_file, "DatasetInsert", f"Inserted dataset {config_name} with datasetid {dataset_id}",
                     run_uuid=run_uuid, stepcounter="DatasetInsert_0", user=user, script_start_time=script_start_time)
         return dataset_id
     except psycopg2.Error as e:
@@ -236,7 +238,7 @@ def insert_dataset(cursor, config_name, dataset_date, label, datasource_id, data
         return None
 
 def update_dataset_status(cursor, dataset_id, datasource_id, dataset_type_id, label, dataset_date, log_file, run_uuid, user, script_start_time):
-    """Deactivate other datasets with same DataSourceID, DataSetTypeID, Label, and DataSetDate."""
+    """Deactivate other datasets with same datasourceid, datasettypeid, label, and datasetdate."""
     try:
         cursor.execute("""
             UPDATE dba.tdataset
@@ -248,10 +250,10 @@ def update_dataset_status(cursor, dataset_id, datasource_id, dataset_type_id, la
               AND datasetid != %s
               AND isactive = TRUE;
         """, (datasource_id, dataset_type_id, label, dataset_date, dataset_id))
-        log_message(log_file, "DatasetUpdate", f"Deactivated other datasets for DataSetID={dataset_id}, DataSourceID={datasource_id}, DataSetTypeID={dataset_type_id}, Label={label}, DataSetDate={dataset_date}",
+        log_message(log_file, "DatasetUpdate", f"Deactivated other datasets for datasetid={dataset_id}, datasourceid={datasource_id}, datasettypeid={dataset_type_id}, label={label}, datasetdate={dataset_date}",
                     run_uuid=run_uuid, stepcounter="DatasetUpdate_0", user=user, script_start_time=script_start_time)
     except psycopg2.Error as e:
-        log_message(log_file, "Error", f"Failed to deactivate other datasets for DataSetID {dataset_id}: {str(e)}\n{traceback.format_exc()}",
+        log_message(log_file, "Error", f"Failed to deactivate other datasets for datasetid {dataset_id}: {str(e)}\n{traceback.format_exc()}",
                     run_uuid=run_uuid, stepcounter="DatasetUpdate_1", user=user, script_start_time=script_start_time)
 
 def add_columns_to_table(cursor, table_name, new_columns, column_lengths, log_file, run_uuid, user, script_start_time):
@@ -430,7 +432,7 @@ def generic_import(config_id):
                     run_uuid=run_uuid, stepcounter=f"File_{filename}_0", user=user, script_start_time=script_start_time)
 
         # Parse date from filename
-        date_string = parse_metadata(filename, config, config["DateConfig"], config["DateLocation"], config["delimiter"], log_file, run_uuid, user, script_start_time)
+        date_string = parse_metadata(filename, config, config["dateconfig"], config["datelocation"], config["delimiter"], log_file, run_uuid, user, script_start_time)
         if date_string:
             try:
                 dataset_date = datetime.strptime(date_string, '%Y%m%dT%H%M%S').date()
@@ -451,7 +453,7 @@ def generic_import(config_id):
         with psycopg2.connect(**DB_PARAMS) as conn:
             with conn.cursor() as cur:
                 try:
-                    datasource_id, dataset_type_id = ensure_lookup_ids(cur, config["DataSource"], config["DataSetType"], user, log_file, run_uuid, script_start_time)
+                    datasource_id, dataset_type_id = ensure_lookup_ids(cur, config["datasource"], config["datasettype"], user, log_file, run_uuid, script_start_time)
                     if not datasource_id or not dataset_type_id:
                         log_message(log_file, "Error", f"Failed to ensure lookup IDs for file {filename}. Skipping.",
                                     run_uuid=run_uuid, stepcounter=f"File_{filename}_1", user=user, script_start_time=script_start_time)
@@ -588,8 +590,8 @@ def generic_import(config_id):
                     metadata_label = parse_metadata(filename, config, config["metadata_label_source"],
                                                    config["metadata_label_location"], config["delimiter"],
                                                    log_file, run_uuid, user, script_start_time)
-                    event_date = parse_metadata(filename, config, config["DateConfig"],
-                                                config["DateLocation"], config["delimiter"],
+                    event_date = parse_metadata(filename, config, config["dateconfig"],
+                                                config["datelocation"], config["delimiter"],
                                                 log_file, run_uuid, user, script_start_time)
 
                     log_message(log_file, "Processing", f"Calling load_data_to_postgres for {filename} with dataset_id {dataset_id}",
@@ -600,9 +602,14 @@ def generic_import(config_id):
                         try:
                             shutil.move(file_path, archive_path)
                             os.chmod(archive_path, 0o660)
-                            os.chown(archive_path, os.getuid(), os.getgrnam('etl_group').gr_gid)
-                            log_message(log_file, "Processing", f"Moved {filename} to {archive_path}",
-                                        run_uuid=run_uuid, stepcounter=f"File_{filename}_12", user=user, script_start_time=script_start_time)
+                            try:
+                                group_id = grp.getgrnam('etl_group').gr_gid
+                                os.chown(archive_path, os.getuid(), group_id)
+                                log_message(log_file, "Processing", f"Moved {filename} to {archive_path}",
+                                            run_uuid=run_uuid, stepcounter=f"File_{filename}_12", user=user, script_start_time=script_start_time)
+                            except KeyError:
+                                log_message(log_file, "Warning", f"Group 'etl_group' not found; skipping chown for {archive_path}",
+                                            run_uuid=run_uuid, stepcounter=f"File_{filename}_13", user=user, script_start_time=script_start_time)
                         except Exception as e:
                             log_message(log_file, "Error", f"Failed to move {filename} to archive: {str(e)}\n{traceback.format_exc()}",
                                         run_uuid=run_uuid, stepcounter=f"File_{filename}_13", user=user, script_start_time=script_start_time)

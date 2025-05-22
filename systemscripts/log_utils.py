@@ -15,7 +15,7 @@ _log_time_lock = threading.Lock()
 
 # Database connection parameters
 DB_PARAMS = {
-    "dbname": "Feeds",
+    "dbname": "feeds",
     "user": "yostfundsadmin",
     "password": "etlserver2025!",
     "host": "localhost"
@@ -100,7 +100,7 @@ def log_message(log_file, process_type, message, use_db=True, **kwargs):
             with psycopg2.connect(**DB_PARAMS) as conn:
                 with conn.cursor() as cur:
                     cur.execute("""
-                        INSERT INTO dba.tLogEntry (
+                        INSERT INTO dba.tlogentry (
                             run_uuid, timestamp, process_type, stepcounter, 
                             user_name, step_runtime, total_runtime, message
                         )
