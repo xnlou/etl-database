@@ -13,230 +13,230 @@ BEGIN
     END IF;
 END $OUTER$;
 
--- Line 7: Create tDataSetType table if it doesn't exist
+-- Line 7: Create tdatasettype table if it doesn't exist
 DO $OUTER$
 BEGIN
-    RAISE NOTICE 'Line 7: Starting creation of tDataSetType table';
+    RAISE NOTICE 'Line 7: Starting creation of tdatasettype table';
     IF NOT EXISTS (SELECT 1 FROM pg_tables WHERE schemaname = 'dba' AND tablename = 'tdatasettype') THEN
-        CREATE TABLE dba.tDataSetType (
-            DataSetTypeID SERIAL PRIMARY KEY,
-            TypeName VARCHAR(50) NOT NULL UNIQUE,
-            Description TEXT,
-            CreatedDate TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            CreatedBy VARCHAR(50) NOT NULL DEFAULT CURRENT_USER
+        CREATE TABLE dba.tdatasettype (
+            datasettypeid SERIAL PRIMARY KEY,
+            typename VARCHAR(50) NOT NULL UNIQUE,
+            description TEXT,
+            createddate TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            createdby VARCHAR(50) NOT NULL DEFAULT CURRENT_USER
         );
 
-        COMMENT ON TABLE dba.tDataSetType IS 'Stores dataset type definitions (e.g., MeetMax, ClientUpload).';
-        COMMENT ON COLUMN dba.tDataSetType.DataSetTypeID IS 'Primary key for dataset type.';
-        COMMENT ON COLUMN dba.tDataSetType.TypeName IS 'Unique name of the dataset type.';
-        COMMENT ON COLUMN dba.tDataSetType.Description IS 'Optional description of the dataset type.';
-        COMMENT ON COLUMN dba.tDataSetType.CreatedDate IS 'Timestamp when the record was created.';
-        COMMENT ON COLUMN dba.tDataSetType.CreatedBy IS 'User who created the record.';
-        RAISE NOTICE 'Line 21: tDataSetType table and comments created';
+        COMMENT ON TABLE dba.tdatasettype IS 'Stores dataset type definitions (e.g., MeetMax, ClientUpload).';
+        COMMENT ON COLUMN dba.tdatasettype.datasettypeid IS 'Primary key for dataset type.';
+        COMMENT ON COLUMN dba.tdatasettype.typename IS 'Unique name of the dataset type.';
+        COMMENT ON COLUMN dba.tdatasettype.description IS 'Optional description of the dataset type.';
+        COMMENT ON COLUMN dba.tdatasettype.createddate IS 'Timestamp when the record was created.';
+        COMMENT ON COLUMN dba.tdatasettype.createdby IS 'User who created the record.';
+        RAISE NOTICE 'Line 21: tdatasettype table and comments created';
     END IF;
-    RAISE NOTICE 'Line 23: Completed tDataSetType block';
+    RAISE NOTICE 'Line 23: Completed tdatasettype block';
 END $OUTER$;
 
--- Grant permissions on tDataSetType
+-- Grant permissions on tdatasettype
 DO $OUTER$
 BEGIN
-    RAISE NOTICE 'Line 27: Granting permissions on tDataSetType';
-    GRANT SELECT, INSERT ON dba.tDataSetType TO etl_user;
-    GRANT ALL ON dba.tDataSetType TO yostfundsadmin;
-    GRANT USAGE, SELECT ON SEQUENCE dba.tDataSetType_DataSetTypeID_seq TO etl_user;
-    RAISE NOTICE 'Line 31: Permissions granted on tDataSetType';
+    RAISE NOTICE 'Line 27: Granting permissions on tdatasettype';
+    GRANT SELECT, INSERT ON dba.tdatasettype TO etl_user;
+    GRANT ALL ON dba.tdatasettype TO yostfundsadmin;
+    GRANT USAGE, SELECT ON SEQUENCE dba.tdatasettype_datasettypeid_seq TO etl_user;
+    RAISE NOTICE 'Line 31: Permissions granted on tdatasettype';
 END $OUTER$;
 
--- Line 34: Create tDataSource table if it doesn't exist
+-- Line 34: Create tdatasource table if it doesn't exist
 DO $OUTER$
 BEGIN
-    RAISE NOTICE 'Line 34: Starting creation of tDataSource table';
+    RAISE NOTICE 'Line 34: Starting creation of tdatasource table';
     IF NOT EXISTS (SELECT 1 FROM pg_tables WHERE schemaname = 'dba' AND tablename = 'tdatasource') THEN
-        CREATE TABLE dba.tDataSource (
-            DataSourceID SERIAL PRIMARY KEY,
-            SourceName VARCHAR(50) NOT NULL UNIQUE,
-            Description TEXT,
-            CreatedDate TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            CreatedBy VARCHAR(50) NOT NULL DEFAULT CURRENT_USER
+        CREATE TABLE dba.tdatasource (
+            datasourceid SERIAL PRIMARY KEY,
+            sourcename VARCHAR(50) NOT NULL UNIQUE,
+            description TEXT,
+            createddate TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            createdby VARCHAR(50) NOT NULL DEFAULT CURRENT_USER
         );
 
-        COMMENT ON TABLE dba.tDataSource IS 'Stores data source definitions (e.g., MeetMax Website, SFTP Upload).';
-        COMMENT ON COLUMN dba.tDataSource.DataSourceID IS 'Primary key for data source.';
-        COMMENT ON COLUMN dba.tDataSource.SourceName IS 'Unique name of the data source.';
-        COMMENT ON COLUMN dba.tDataSource.Description IS 'Optional description of the data source.';
-        COMMENT ON COLUMN dba.tDataSource.CreatedDate IS 'Timestamp when the record was created.';
-        COMMENT ON COLUMN dba.tDataSource.CreatedBy IS 'User who created the record.';
-        RAISE NOTICE 'Line 48: tDataSource table and comments created';
+        COMMENT ON TABLE dba.tdatasource IS 'Stores data source definitions (e.g., MeetMax Website, SFTP Upload).';
+        COMMENT ON COLUMN dba.tdatasource.datasourceid IS 'Primary key for data source.';
+        COMMENT ON COLUMN dba.tdatasource.sourcename IS 'Unique name of the data source.';
+        COMMENT ON COLUMN dba.tdatasource.description IS 'Optional description of the data source.';
+        COMMENT ON COLUMN dba.tdatasource.createddate IS 'Timestamp when the record was created.';
+        COMMENT ON COLUMN dba.tdatasource.createdby IS 'User who created the record.';
+        RAISE NOTICE 'Line 48: tdatasource table and comments created';
     END IF;
-    RAISE NOTICE 'Line 50: Completed tDataSource block';
+    RAISE NOTICE 'Line 50: Completed tdatasource block';
 END $OUTER$;
 
--- Grant permissions on tDataSource
+-- Grant permissions on tdatasource
 DO $OUTER$
 BEGIN
-    RAISE NOTICE 'Line 54: Granting permissions on tDataSource';
-    GRANT SELECT, INSERT ON dba.tDataSource TO etl_user;
-    GRANT ALL ON dba.tDataSource TO yostfundsadmin;
-    GRANT USAGE, SELECT ON SEQUENCE dba.tDataSource_DataSourceID_seq TO etl_user;
-    RAISE NOTICE 'Line 58: Permissions granted on tDataSource';
+    RAISE NOTICE 'Line 54: Granting permissions on tdatasource';
+    GRANT SELECT, INSERT ON dba.tdatasource TO etl_user;
+    GRANT ALL ON dba.tdatasource TO yostfundsadmin;
+    GRANT USAGE, SELECT ON SEQUENCE dba.tdatasource_datasourceid_seq TO etl_user;
+    RAISE NOTICE 'Line 58: Permissions granted on tdatasource';
 END $OUTER$;
 
--- Line 61: Create tDataStatus table if it doesn't exist
+-- Line 61: Create tdatastatus table if it doesn't exist
 DO $OUTER$
 BEGIN
-    RAISE NOTICE 'Line 61: Starting creation of tDataStatus table';
+    RAISE NOTICE 'Line 61: Starting creation of tdatastatus table';
     IF NOT EXISTS (SELECT 1 FROM pg_tables WHERE schemaname = 'dba' AND tablename = 'tdatastatus') THEN
-        CREATE TABLE dba.tDataStatus (
-            DataStatusID SERIAL PRIMARY KEY,
-            StatusName VARCHAR(50) NOT NULL UNIQUE,
-            Description TEXT,
-            CreatedDate TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            CreatedBy VARCHAR(50) NOT NULL DEFAULT CURRENT_USER
+        CREATE TABLE dba.tdatastatus (
+            datastatusid SERIAL PRIMARY KEY,
+            statusname VARCHAR(50) NOT NULL UNIQUE,
+            description TEXT,
+            createddate TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            createdby VARCHAR(50) NOT NULL DEFAULT CURRENT_USER
         );
 
-        COMMENT ON TABLE dba.tDataStatus IS 'Stores status codes for datasets (e.g., Active, Inactive, Deleted).';
-        COMMENT ON COLUMN dba.tDataStatus.DataStatusID IS 'Primary key for status.';
-        COMMENT ON COLUMN dba.tDataStatus.StatusName IS 'Unique name of the status.';
-        COMMENT ON COLUMN dba.tDataStatus.Description IS 'Optional description of the status.';
-        COMMENT ON COLUMN dba.tDataStatus.CreatedDate IS 'Timestamp when the record was created.';
-        COMMENT ON COLUMN dba.tDataStatus.CreatedBy IS 'User who created the record.';
-        RAISE NOTICE 'Line 75: tDataStatus table and comments created';
+        COMMENT ON TABLE dba.tdatastatus IS 'Stores status codes for datasets (e.g., Active, Inactive, Deleted).';
+        COMMENT ON COLUMN dba.tdatastatus.datastatusid IS 'Primary key for status.';
+        COMMENT ON COLUMN dba.tdatastatus.statusname IS 'Unique name of the status.';
+        COMMENT ON COLUMN dba.tdatastatus.description IS 'Optional description of the status.';
+        COMMENT ON COLUMN dba.tdatastatus.createddate IS 'Timestamp when the record was created.';
+        COMMENT ON COLUMN dba.tdatastatus.createdby IS 'User who created the record.';
+        RAISE NOTICE 'Line 75: tdatastatus table and comments created';
     END IF;
-    RAISE NOTICE 'Line 77: Completed tDataStatus block';
+    RAISE NOTICE 'Line 77: Completed tdatastatus block';
 END $OUTER$;
 
--- Grant permissions on tDataStatus
+-- Grant permissions on tdatastatus
 DO $OUTER$
 BEGIN
-    RAISE NOTICE 'Line 81: Granting permissions on tDataStatus';
-    GRANT SELECT, INSERT ON dba.tDataStatus TO etl_user;
-    GRANT ALL ON dba.tDataStatus TO yostfundsadmin;
-    GRANT USAGE, SELECT ON SEQUENCE dba.tDataStatus_DataStatusID_seq TO etl_user;
-    RAISE NOTICE 'Line 85: Permissions granted on tDataStatus';
+    RAISE NOTICE 'Line 81: Granting permissions on tdatastatus';
+    GRANT SELECT, INSERT ON dba.tdatastatus TO etl_user;
+    GRANT ALL ON dba.tdatastatus TO yostfundsadmin;
+    GRANT USAGE, SELECT ON SEQUENCE dba.tdatastatus_datastatusid_seq TO etl_user;
+    RAISE NOTICE 'Line 85: Permissions granted on tdatastatus';
 END $OUTER$;
 
--- Line 88: Create tDataSet table if it doesn't exist
+-- Line 88: Create tdataset table if it doesn't exist
 DO $OUTER$
 BEGIN
-    RAISE NOTICE 'Line 88: Starting creation of tDataSet table';
+    RAISE NOTICE 'Line 88: Starting creation of tdataset table';
     IF NOT EXISTS (SELECT 1 FROM pg_tables WHERE schemaname = 'dba' AND tablename = 'tdataset') THEN
-        CREATE TABLE dba.tDataSet (
-            DataSetID SERIAL PRIMARY KEY,
-            DataSetDate DATE NOT NULL,
-            Label VARCHAR(100) NOT NULL,
-            DataSetTypeID INTEGER NOT NULL,
-            DataSourceID INTEGER NOT NULL,
-            DataStatusID INTEGER NOT NULL,
-            EffFromDate TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            EffThruDate TIMESTAMP NOT NULL DEFAULT '9999-01-01',
-            IsActive BOOLEAN NOT NULL DEFAULT TRUE,
-            CreatedDate TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            CreatedBy VARCHAR(50) NOT NULL DEFAULT CURRENT_USER,
-            CONSTRAINT fk_dataset_type FOREIGN KEY (DataSetTypeID) REFERENCES dba.tDataSetType (DataSetTypeID),
-            CONSTRAINT fk_dataset_source FOREIGN KEY (DataSourceID) REFERENCES dba.tDataSource (DataSourceID),
-            CONSTRAINT fk_dataset_status FOREIGN KEY (DataStatusID) REFERENCES dba.tDataStatus (DataStatusID),
-            CONSTRAINT chk_eff_dates CHECK (EffFromDate <= EffThruDate)
+        CREATE TABLE dba.tdataset (
+            datasetid SERIAL PRIMARY KEY,
+            datasetdate DATE NOT NULL,
+            label VARCHAR(100) NOT NULL,
+            datasettypeid INTEGER NOT NULL,
+            datasourceid INTEGER NOT NULL,
+            datastatusid INTEGER NOT NULL,
+            efffromdate TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            effthrudate TIMESTAMP NOT NULL DEFAULT '9999-01-01',
+            isactive BOOLEAN NOT NULL DEFAULT TRUE,
+            createddate TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            createdby VARCHAR(50) NOT NULL DEFAULT CURRENT_USER,
+            CONSTRAINT fk_dataset_type FOREIGN KEY (datasettypeid) REFERENCES dba.tdatasettype (datasettypeid),
+            CONSTRAINT fk_dataset_source FOREIGN KEY (datasourceid) REFERENCES dba.tdatasource (datasourceid),
+            CONSTRAINT fk_dataset_status FOREIGN KEY (datastatusid) REFERENCES dba.tdatastatus (datastatusid),
+            CONSTRAINT chk_eff_dates CHECK (efffromdate <= effthrudate)
         );
 
-        COMMENT ON TABLE dba.tDataSet IS 'Tracks metadata for dataset loads in the ETL pipeline.';
-        COMMENT ON COLUMN dba.tDataSet.DataSetID IS 'Primary key for the dataset.';
-        COMMENT ON COLUMN dba.tDataSet.DataSetDate IS 'Date associated with the dataset (e.g., data reference date).';
-        COMMENT ON COLUMN dba.tDataSet.Label IS 'Descriptive label for the dataset.';
-        COMMENT ON COLUMN dba.tDataSet.DataSetTypeID IS 'Foreign key to tDataSetType, indicating dataset type.';
-        COMMENT ON COLUMN dba.tDataSet.DataSourceID IS 'Foreign key to tDataSource, indicating data source.';
-        COMMENT ON COLUMN dba.tDataSet.DataStatusID IS 'Foreign key to tDataStatus, indicating dataset status.';
-        COMMENT ON COLUMN dba.tDataSet.EffFromDate IS 'Effective start date, defaults to creation time.';
-        COMMENT ON COLUMN dba.tDataSet.EffThruDate IS 'Effective end date, defaults to 9999-01-01 for active records.';
-        COMMENT ON COLUMN dba.tDataSet.IsActive IS 'Indicates if the dataset is active (TRUE) or inactive (FALSE).';
-        COMMENT ON COLUMN dba.tDataSet.CreatedDate IS 'Timestamp when the record was created.';
-        COMMENT ON COLUMN dba.tDataSet.CreatedBy IS 'User who created the record.';
-        RAISE NOTICE 'Line 115: tDataSet table and comments created';
+        COMMENT ON TABLE dba.tdataset IS 'Tracks metadata for dataset loads in the ETL pipeline.';
+        COMMENT ON COLUMN dba.tdataset.datasetid IS 'Primary key for the dataset.';
+        COMMENT ON COLUMN dba.tdataset.datasetdate IS 'Date associated with the dataset (e.g., data reference date).';
+        COMMENT ON COLUMN dba.tdataset.label IS 'Descriptive label for the dataset.';
+        COMMENT ON COLUMN dba.tdataset.datasettypeid IS 'Foreign key to tdatasettype, indicating dataset type.';
+        COMMENT ON COLUMN dba.tdataset.datasourceid IS 'Foreign key to tdatasource, indicating data source.';
+        COMMENT ON COLUMN dba.tdataset.datastatusid IS 'Foreign key to tdatastatus, indicating dataset status.';
+        COMMENT ON COLUMN dba.tdataset.efffromdate IS 'Effective start date, defaults to creation time.';
+        COMMENT ON COLUMN dba.tdataset.effthrudate IS 'Effective end date, defaults to 9999-01-01 for active records.';
+        COMMENT ON COLUMN dba.tdataset.isactive IS 'Indicates if the dataset is active (TRUE) or inactive (FALSE).';
+        COMMENT ON COLUMN dba.tdataset.createddate IS 'Timestamp when the record was created.';
+        COMMENT ON COLUMN dba.tdataset.createdby IS 'User who created the record.';
+        RAISE NOTICE 'Line 115: tdataset table and comments created';
     END IF;
-    RAISE NOTICE 'Line 117: Completed tDataSet block';
+    RAISE NOTICE 'Line 117: Completed tdataset block';
 END $OUTER$;
 
--- Grant permissions on tDataSet
+-- Grant permissions on tdataset
 DO $OUTER$
 BEGIN
-    RAISE NOTICE 'Line 121: Granting permissions on tDataSet';
-    GRANT SELECT, INSERT ON dba.tDataSet TO etl_user;
-    GRANT ALL ON dba.tDataSet TO yostfundsadmin;
-    GRANT USAGE, SELECT ON SEQUENCE dba.tDataSet_DataSetID_seq TO etl_user;
-    RAISE NOTICE 'Line 125: Permissions granted on tDataSet';
+    RAISE NOTICE 'Line 121: Granting permissions on tdataset';
+    GRANT SELECT, INSERT ON dba.tdataset TO etl_user;
+    GRANT ALL ON dba.tdataset TO yostfundsadmin;
+    GRANT USAGE, SELECT ON SEQUENCE dba.tdataset_datasetid_seq TO etl_user;
+    RAISE NOTICE 'Line 125: Permissions granted on tdataset';
 END $OUTER$;
 
--- Line 128: Create indexes for tDataSet if they don't exist
+-- Line 128: Create indexes for tdataset if they don't exist
 DO $OUTER$
 BEGIN
-    RAISE NOTICE 'Line 128: Starting creation of tDataSet indexes';
+    RAISE NOTICE 'Line 128: Starting creation of tdataset indexes';
     IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE schemaname = 'dba' AND indexname = 'idx_tdataset_datasetdate') THEN
-        CREATE INDEX idx_tdataset_datasetdate ON dba.tDataSet (DataSetDate);
+        CREATE INDEX idx_tdataset_datasetdate ON dba.tdataset (datasetdate);
         RAISE NOTICE 'Line 132: idx_tdataset_datasetdate index created';
     END IF;
     IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE schemaname = 'dba' AND indexname = 'idx_tdataset_isactive') THEN
-        CREATE INDEX idx_tdataset_isactive ON dba.tDataSet (IsActive);
+        CREATE INDEX idx_tdataset_isactive ON dba.tdataset (isactive);
         RAISE NOTICE 'Line 136: idx_tdataset_isactive index created';
     END IF;
-    RAISE NOTICE 'Line 138: Completed tDataSet indexes block';
+    RAISE NOTICE 'Line 138: Completed tdataset indexes block';
 END $OUTER$;
 
--- Line 141: Create function fEnforceSingleActiveDataSet if it doesn't exist
+-- Line 141: Create function fenforcesingleactivedataset if it doesn't exist
 DO $OUTER$
 BEGIN
-    RAISE NOTICE 'Line 141: Starting creation of fEnforceSingleActiveDataSet function';
+    RAISE NOTICE 'Line 141: Starting creation of fenforcesingleactivedataset function';
     IF NOT EXISTS (
         SELECT 1
         FROM pg_proc
         WHERE pronamespace = (SELECT oid FROM pg_namespace WHERE nspname = 'dba')
         AND proname = 'fenforcesingleactivedataset'
     ) THEN
-        CREATE FUNCTION dba.fEnforceSingleActiveDataSet()
+        CREATE FUNCTION dba.fenforcesingleactivedataset()
         RETURNS TRIGGER AS $INNER$
         BEGIN
-            RAISE NOTICE 'Line 147: Inside fEnforceSingleActiveDataSet function body';
-            IF NEW.IsActive = TRUE THEN
-                UPDATE dba.tDataSet
-                SET IsActive = FALSE,
-                    EffThruDate = CURRENT_TIMESTAMP,
-                    DataStatusID = (SELECT DataStatusID FROM dba.tDataStatus WHERE StatusName = 'Inactive')
-                WHERE Label = NEW.Label
-                  AND DataSetTypeID = NEW.DataSetTypeID
-                  AND DataSetDate = NEW.DataSetDate
-                  AND DataSetID != NEW.DataSetID
-                  AND IsActive = TRUE;
-                RAISE NOTICE 'Line 157: Completed UPDATE in fEnforceSingleActiveDataSet';
+            RAISE NOTICE 'Line 147: Inside fenforcesingleactivedataset function body';
+            IF NEW.isactive = TRUE THEN
+                UPDATE dba.tdataset
+                SET isactive = FALSE,
+                    effthrudate = CURRENT_TIMESTAMP,
+                    datastatusid = (SELECT datastatusid FROM dba.tdatastatus WHERE statusname = 'Inactive')
+                WHERE label = NEW.label
+                  AND datasettypeid = NEW.datasettypeid
+                  AND datasetdate = NEW.datasetdate
+                  AND datasetid != NEW.datasetid
+                  AND isactive = TRUE;
+                RAISE NOTICE 'Line 157: Completed UPDATE in fenforcesingleactivedataset';
             END IF;
-            RAISE NOTICE 'Line 159: Returning from fEnforceSingleActiveDataSet';
+            RAISE NOTICE 'Line 159: Returning from fenforcesingleactivedataset';
             RETURN NEW;
         END;
         $INNER$ LANGUAGE plpgsql;
-        RAISE NOTICE 'Line 162: fEnforceSingleActiveDataSet function created';
+        RAISE NOTICE 'Line 162: fenforcesingleactivedataset function created';
     END IF;
-    RAISE NOTICE 'Line 164: Completed fEnforceSingleActiveDataSet block';
+    RAISE NOTICE 'Line 164: Completed fenforcesingleactivedataset block';
 END $OUTER$;
 
--- Grant permissions on fEnforceSingleActiveDataSet
+-- Grant permissions on fenforcesingleactivedataset
 DO $OUTER$
 BEGIN
-    RAISE NOTICE 'Line 168: Granting permissions on fEnforceSingleActiveDataSet';
-    GRANT EXECUTE ON FUNCTION dba.fEnforceSingleActiveDataSet() TO etl_user;
-    RAISE NOTICE 'Line 170: Permissions granted on fEnforceSingleActiveDataSet';
+    RAISE NOTICE 'Line 168: Granting permissions on fenforcesingleactivedataset';
+    GRANT EXECUTE ON FUNCTION dba.fenforcesingleactivedataset() TO etl_user;
+    RAISE NOTICE 'Line 170: Permissions granted on fenforcesingleactivedataset';
 END $OUTER$;
 
--- Line 173: Create trigger tTriggerEnforceSingleActiveDataSet if it doesn't exist
+-- Line 173: Create trigger ttriggerenforcesingleactivedataset if it doesn't exist
 DO $OUTER$
 BEGIN
-    RAISE NOTICE 'Line 173: Starting creation of tTriggerEnforceSingleActiveDataSet trigger';
+    RAISE NOTICE 'Line 173: Starting creation of ttriggerenforcesingleactivedataset trigger';
     IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'ttriggerenforcesingleactivedataset' AND tgrelid = (SELECT oid FROM pg_class WHERE relname = 'tdataset' AND relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = 'dba'))) THEN
-        CREATE TRIGGER tTriggerEnforceSingleActiveDataSet
-        AFTER INSERT OR UPDATE OF IsActive
-        ON dba.tDataSet
+        CREATE TRIGGER ttriggerenforcesingleactivedataset
+        AFTER INSERT OR UPDATE OF isactive
+        ON dba.tdataset
         FOR EACH ROW
-        WHEN (NEW.IsActive = TRUE)
-        EXECUTE FUNCTION dba.fEnforceSingleActiveDataSet();
-        RAISE NOTICE 'Line 181: tTriggerEnforceSingleActiveDataSet trigger created';
+        WHEN (NEW.isactive = TRUE)
+        EXECUTE FUNCTION dba.fenforcesingleactivedataset();
+        RAISE NOTICE 'Line 181: ttriggerenforcesingleactivedataset trigger created';
     END IF;
-    RAISE NOTICE 'Line 183: Completed tTriggerEnforceSingleActiveDataSet block';
+    RAISE NOTICE 'Line 183: Completed ttriggerenforcesingleactivedataset block';
 END $OUTER$;
 
 -- Line 186: Create function f_dataset_iu if it doesn't exist
@@ -346,7 +346,7 @@ BEGIN
             RETURN v_datasetid;
         END;
         $INNER$;
-        COMMENT ON FUNCTION dba.f_dataset_iu IS 'Inserts or updates a dataset in tDataSet, resolving type, source, and status IDs, and managing active status.';
+        COMMENT ON FUNCTION dba.f_dataset_iu IS 'Inserts or updates a dataset in tdataset, resolving type, source, and status IDs, and managing active status.';
         RAISE NOTICE 'Line 260: f_dataset_iu function created';
     END IF;
     RAISE NOTICE 'Line 262: Completed f_dataset_iu block';
@@ -360,19 +360,19 @@ BEGIN
     RAISE NOTICE 'Line 268: Permissions granted on f_dataset_iu';
 END $OUTER$;
 
--- Line 271: Insert data into tDataStatus if the table is empty
+-- Line 271: Insert data into tdatastatus if the table is empty
 DO $OUTER$
 BEGIN
-    RAISE NOTICE 'Line 271: Starting insert into tDataStatus';
-    IF (SELECT COUNT(*) FROM dba.tDataStatus) = 0 THEN
-        INSERT INTO dba.tDataStatus (StatusName, Description) VALUES
+    RAISE NOTICE 'Line 271: Starting insert into tdatastatus';
+    IF (SELECT COUNT(*) FROM dba.tdatastatus) = 0 THEN
+        INSERT INTO dba.tdatastatus (statusname, description) VALUES
             ('Active', 'Dataset is currently active and in use'),
             ('Inactive', 'Dataset is no longer active but retained for history'),
             ('Deleted', 'Dataset has been marked for deletion'),
             ('New', 'Default status of every new dataset'),
             ('Failed', 'Status if something goes wrong')
             ;
-        RAISE NOTICE 'Line 276: Inserted data into tDataStatus';
+        RAISE NOTICE 'Line 276: Inserted data into tdatastatus';
     END IF;
-    RAISE NOTICE 'Line 278: Completed tDataStatus insert block';
+    RAISE NOTICE 'Line 278: Completed tdatastatus insert block';
 END $OUTER$;

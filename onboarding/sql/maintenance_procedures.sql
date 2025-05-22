@@ -14,96 +14,96 @@ END $OUTER$;
 -- Create logging table if it doesn't exist
 DO $OUTER$
 BEGIN
-    RAISE NOTICE 'Creating tMaintenanceLog table';
+    RAISE NOTICE 'Creating tmaintenancelog table';
     IF NOT EXISTS (SELECT 1 FROM pg_tables WHERE schemaname = 'dba' AND tablename = 'tmaintenancelog') THEN
-        CREATE TABLE dba.tMaintenanceLog (
-            logId SERIAL PRIMARY KEY,
-            maintenanceTime TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        CREATE TABLE dba.tmaintenancelog (
+            logid SERIAL PRIMARY KEY,
+            maintenancetime TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
             operation VARCHAR(50) NOT NULL,
-            tableName VARCHAR(100),
-            userName VARCHAR(50),
-            durationSeconds FLOAT,
+            tablename VARCHAR(100),
+            username VARCHAR(50),
+            durationseconds FLOAT,
             details TEXT
         );
-        RAISE NOTICE 'tMaintenanceLog table created';
+        RAISE NOTICE 'tmaintenancelog table created';
     END IF;
 END $OUTER$;
 
 -- Grant permissions
 DO $OUTER$
 BEGIN
-    RAISE NOTICE 'Granting permissions on tMaintenanceLog';
-    GRANT SELECT, INSERT ON dba.tMaintenanceLog TO etl_user;
-    GRANT ALL ON dba.tMaintenanceLog TO yostfundsadmin;
-    GRANT USAGE, SELECT ON SEQUENCE dba.tMaintenanceLog_logId_seq TO etl_user;
-    RAISE NOTICE 'Permissions granted on tMaintenanceLog';
+    RAISE NOTICE 'Granting permissions on tmaintenancelog';
+    GRANT SELECT, INSERT ON dba.tmaintenancelog TO etl_user;
+    GRANT ALL ON dba.tmaintenancelog TO yostfundsadmin;
+    GRANT USAGE, SELECT ON SEQUENCE dba.tmaintenancelog_logid_seq TO etl_user;
+    RAISE NOTICE 'Permissions granted on tmaintenancelog';
 END $OUTER$;
 
 -- Create index for faster queries
 DO $OUTER$
 BEGIN
-    RAISE NOTICE 'Creating index idx_tMaintenanceLog_maintenanceTime';
+    RAISE NOTICE 'Creating index idx_tmaintenancelog_maintenancetime';
     IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE schemaname = 'dba' AND indexname = 'idx_tmaintenancelog_maintenancetime') THEN
-        CREATE INDEX idx_tMaintenanceLog_maintenanceTime ON dba.tMaintenanceLog(maintenanceTime);
-        RAISE NOTICE 'Index idx_tMaintenanceLog_maintenanceTime created';
+        CREATE INDEX idx_tmaintenancelog_maintenancetime ON dba.tmaintenancelog(maintenancetime);
+        RAISE NOTICE 'Index idx_tmaintenancelog_maintenancetime created';
     END IF;
 END $OUTER$;
 
 -- Create procedure for VACUUM ANALYZE
 DO $OUTER$
 BEGIN
-    RAISE NOTICE 'Creating pRunMaintenanceVacuumAnalyze procedure';
-    CREATE OR REPLACE PROCEDURE dba.pRunMaintenanceVacuumAnalyze()
+    RAISE NOTICE 'Creating prunmaintenancevacuumanalyze procedure';
+    CREATE OR REPLACE PROCEDURE dba.prunmaintenancevacuumanalyze()
     LANGUAGE plpgsql
     AS $INNER$
     DECLARE
-        startTime TIMESTAMP;
-        endTime TIMESTAMP;
-        tableRec RECORD;
+        starttime TIMESTAMP;
+        endtime TIMESTAMP;
+        tablerec RECORD;
     BEGIN
-        startTime := CURRENT_TIMESTAMP;
+        starttime := CURRENT_TIMESTAMP;
         -- Run VACUUM ANALYZE on all tables
-        FOR tableRec IN (
-            SELECT format('%I.%I', nspname, relname) AS tableName
+        FOR tablerec IN (
+            SELECT format('%I.%I', nspname, relname) AS tablename
             FROM pg_class c
             JOIN pg_namespace n ON n.oid = c.relnamespace
             WHERE c.relkind = 'r' AND n.nspname NOT IN ('pg_catalog', 'information_schema')
         ) LOOP
-            EXECUTE 'VACUUM ANALYZE ' || quote_ident(tableRec.tableName);
+            EXECUTE 'VACUUM ANALYZE ' || quote_ident(tablerec.tablename);
         END LOOP;
-        endTime := CURRENT_TIMESTAMP;
+        endtime := CURRENT_TIMESTAMP;
 
         -- Log the operation
-        INSERT INTO dba.tMaintenanceLog (
-            maintenanceTime,
+        INSERT INTO dba.tmaintenancelog (
+            maintenancetime,
             operation,
-            tableName,
-            userName,
-            durationSeconds,
+            tablename,
+            username,
+            durationseconds,
             details
         )
         VALUES (
-            startTime,
+            starttime,
             'VACUUM ANALYZE',
             NULL,
             CURRENT_USER,
-            EXTRACT(EPOCH FROM (endTime - startTime)),
+            EXTRACT(EPOCH FROM (endtime - starttime)),
             'Database-wide VACUUM ANALYZE'
         );
 
         COMMIT;
     EXCEPTION
         WHEN OTHERS THEN
-            INSERT INTO dba.tMaintenanceLog (
-                maintenanceTime,
+            INSERT INTO dba.tmaintenancelog (
+                maintenancetime,
                 operation,
-                tableName,
-                userName,
-                durationSeconds,
+                tablename,
+                username,
+                durationseconds,
                 details
             )
             VALUES (
-                startTime,
+                starttime,
                 'VACUUM ANALYZE',
                 NULL,
                 CURRENT_USER,
@@ -114,13 +114,13 @@ BEGIN
             RAISE NOTICE 'Maintenance failed: %', SQLERRM;
     END;
     $INNER$;
-    RAISE NOTICE 'pRunMaintenanceVacuumAnalyze procedure created';
+    RAISE NOTICE 'prunmaintenancevacuumanalyze procedure created';
 END $OUTER$;
 
 -- Grant execute permission
 DO $OUTER$
 BEGIN
-    RAISE NOTICE 'Granting execute permission on pRunMaintenanceVacuumAnalyze';
-    GRANT EXECUTE ON PROCEDURE dba.pRunMaintenanceVacuumAnalyze() TO etl_user;
-    RAISE NOTICE 'Execute permission granted on pRunMaintenanceVacuumAnalyze';
+    RAISE NOTICE 'Granting execute permission on prunmaintenancevacuumanalyze';
+    GRANT EXECUTE ON PROCEDURE dba.prunmaintenancevacuumanalyze() TO etl_user;
+    RAISE NOTICE 'Execute permission granted on prunmaintenancevacuumanalyze';
 END $OUTER$;

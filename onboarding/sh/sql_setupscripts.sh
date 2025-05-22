@@ -1,5 +1,5 @@
 #!/bin/bash
-# Description: Sets up privileged roles and permissions, creates the Feeds database if it doesn't exist, and executes specific SQL scripts in the onboarding directory in a defined order.
+# Description: Sets up privileged roles and permissions, creates the feeds database if it doesn't exist, and executes specific SQL scripts in the onboarding directory in a defined order.
 # Must be run with sudo or as a user with sufficient privileges to execute commands as the postgres user.
 set -e  # Exit immediately if a command exits with a non-zero status
 
@@ -12,7 +12,7 @@ LOG_DIR="$PROJECT_DIR/logs"
 LOG_FILE="$LOG_DIR/sql_setupscripts_$(date +%Y%m%dT%H%M%S).log"
 
 # Database connection details
-DB_NAME="Feeds"
+DB_NAME="feeds"
 DB_USER="yostfundsadmin"
 ETL_USER="etl_user"
 DB_HOST="localhost"
@@ -90,7 +90,7 @@ fi
 # Export PGPASSWORD for psql to avoid password prompt (securely handle in production)
 export PGPASSWORD="etlserver2025!"
 
-# Check if the Feeds database exists; if not, create it
+# Check if the feeds database exists; if not, create it
 echo "[INFO] $(date): Checking if database $DB_NAME exists..."
 if ! psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname = '$DB_NAME'" | grep -q 1; then
     echo "[INFO] $(date): Database $DB_NAME does not exist. Creating it..."

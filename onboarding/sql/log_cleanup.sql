@@ -1,108 +1,108 @@
 -- Create procedure to purge old logs
-CREATE OR REPLACE PROCEDURE dba.pPurgeOldLogs(thresholdDays INTEGER)
+CREATE OR REPLACE PROCEDURE dba.ppurgeoldlogs(thresholddays INTEGER)
 LANGUAGE plpgsql
 AS $$
 DECLARE
-    startTime TIMESTAMP := CURRENT_TIMESTAMP;
-    deletedRows INTEGER;
+    starttime TIMESTAMP := CURRENT_TIMESTAMP;
+    deletedrows INTEGER;
 BEGIN
-    -- Purge tDDLLogs
-    DELETE FROM dba.tDDLLogs
-    WHERE changeTime < CURRENT_DATE - INTERVAL '1 day' * thresholdDays;
-    GET DIAGNOSTICS deletedRows = ROW_COUNT;
-    INSERT INTO dba.tMaintenanceLog (
-        maintenanceTime
+    -- Purge tddllogs
+    DELETE FROM dba.tddllogs
+    WHERE changetime < CURRENT_DATE - INTERVAL '1 day' * thresholddays;
+    GET DIAGNOSTICS deletedrows = ROW_COUNT;
+    INSERT INTO dba.tmaintenancelog (
+        maintenancetime
         ,operation
-        ,tableName
-        ,userName
-        ,durationSeconds
+        ,tablename
+        ,username
+        ,durationseconds
         ,details
     )
     VALUES (
-        startTime
+        starttime
         ,'PURGE'
         ,'tDDLLogs'
         ,CURRENT_USER
-        ,EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - startTime))
-        ,format('Deleted %s rows older than %s days', deletedRows, thresholdDays)
+        ,EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - starttime))
+        ,format('Deleted %s rows older than %s days', deletedrows, thresholddays)
     );
     
-    -- Purge tLogEntry
-    DELETE FROM dba.tLogEntry
-    WHERE timestamp < CURRENT_DATE - INTERVAL '1 day' * thresholdDays;
-    GET DIAGNOSTICS deletedRows = ROW_COUNT;
-    INSERT INTO dba.tMaintenanceLog (
-        maintenanceTime
+    -- Purge tlogentry
+    DELETE FROM dba.tlogentry
+    WHERE timestamp < CURRENT_DATE - INTERVAL '1 day' * thresholddays;
+    GET DIAGNOSTICS deletedrows = ROW_COUNT;
+    INSERT INTO dba.tmaintenancelog (
+        maintenancetime
         ,operation
-        ,tableName
-        ,userName
-        ,durationSeconds
+        ,tablename
+        ,username
+        ,durationseconds
         ,details
     )
     VALUES (
-        startTime
+        starttime
         ,'PURGE'
         ,'tLogEntry'
         ,CURRENT_USER
-        ,EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - startTime))
-        ,format('Deleted %s rows older than %s days', deletedRows, thresholdDays)
+        ,EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - starttime))
+        ,format('Deleted %s rows older than %s days', deletedrows, thresholddays)
     );
     
-    -- Purge tMaintenanceLog
-    DELETE FROM dba.tMaintenanceLog
-    WHERE maintenanceTime < CURRENT_DATE - INTERVAL '1 day' * thresholdDays;
-    GET DIAGNOSTICS deletedRows = ROW_COUNT;
-    INSERT INTO dba.tMaintenanceLog (
-        maintenanceTime
+    -- Purge tmaintenancelog
+    DELETE FROM dba.tmaintenancelog
+    WHERE maintenancetime < CURRENT_DATE - INTERVAL '1 day' * thresholddays;
+    GET DIAGNOSTICS deletedrows = ROW_COUNT;
+    INSERT INTO dba.tmaintenancelog (
+        maintenancetime
         ,operation
-        ,tableName
-        ,userName
-        ,durationSeconds
+        ,tablename
+        ,username
+        ,durationseconds
         ,details
     )
     VALUES (
-        startTime
+        starttime
         ,'PURGE'
         ,'tMaintenanceLog'
         ,CURRENT_USER
-        ,EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - startTime))
-        ,format('Deleted %s rows older than %s days', deletedRows, thresholdDays)
+        ,EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - starttime))
+        ,format('Deleted %s rows older than %s days', deletedrows, thresholddays)
     );
     
-    -- Purge tTableIndexStats
-    DELETE FROM dba.tTableIndexStats
-    WHERE snapshotTime < CURRENT_DATE - INTERVAL '1 day' * thresholdDays;
-    GET DIAGNOSTICS deletedRows = ROW_COUNT;
-    INSERT INTO dba.tMaintenanceLog (
-        maintenanceTime
+    -- Purge ttableindexstats
+    DELETE FROM dba.ttableindexstats
+    WHERE snapshottime < CURRENT_DATE - INTERVAL '1 day' * thresholddays;
+    GET DIAGNOSTICS deletedrows = ROW_COUNT;
+    INSERT INTO dba.tmaintenancelog (
+        maintenancetime
         ,operation
-        ,tableName
-        ,userName
-        ,durationSeconds
+        ,tablename
+        ,username
+        ,durationseconds
         ,details
     )
     VALUES (
-        startTime
+        starttime
         ,'PURGE'
         ,'tTableIndexStats'
         ,CURRENT_USER
-        ,EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - startTime))
-        ,format('Deleted %s rows older than %s days', deletedRows, thresholdDays)
+        ,EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - starttime))
+        ,format('Deleted %s rows older than %s days', deletedrows, thresholddays)
     );
     
     COMMIT;
 EXCEPTION
     WHEN OTHERS THEN
-        INSERT INTO dba.tMaintenanceLog (
-            maintenanceTime
+        INSERT INTO dba.tmaintenancelog (
+            maintenancetime
             ,operation
-            ,tableName
-            ,userName
-            ,durationSeconds
+            ,tablename
+            ,username
+            ,durationseconds
             ,details
         )
         VALUES (
-            startTime
+            starttime
             ,'PURGE'
             ,NULL
             ,CURRENT_USER
@@ -115,4 +115,4 @@ END;
 $$;
 
 -- Grant execute permission
-GRANT EXECUTE ON PROCEDURE dba.pPurgeOldLogs(INTEGER) TO etl_user;
+GRANT EXECUTE ON PROCEDURE dba.ppurgeoldlogs(INTEGER) TO etl_user;

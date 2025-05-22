@@ -14,73 +14,73 @@ END $OUTER$;
 -- Create table to log table and index usage
 DO $OUTER$
 BEGIN
-    RAISE NOTICE 'Creating tTableIndexStats table';
+    RAISE NOTICE 'Creating ttableindexstats table';
     IF NOT EXISTS (SELECT 1 FROM pg_tables WHERE schemaname = 'dba' AND tablename = 'ttableindexstats') THEN
-        CREATE TABLE dba.tTableIndexStats (
-            statId SERIAL PRIMARY KEY,
-            snapshotTime TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            schemaName VARCHAR(100),
-            tableName VARCHAR(100),
-            indexName VARCHAR(100),
-            rowCount BIGINT,
-            seqScans BIGINT,
-            idxScans BIGINT,
+        CREATE TABLE dba.ttableindexstats (
+            statid SERIAL PRIMARY KEY,
+            snapshottime TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            schemaname VARCHAR(100),
+            tablename VARCHAR(100),
+            indexname VARCHAR(100),
+            rowcount BIGINT,
+            seqscans BIGINT,
+            idxscans BIGINT,
             inserts BIGINT,
             updates BIGINT,
             deletes BIGINT,
-            totalSize BIGINT
+            totalsize BIGINT
         );
-        RAISE NOTICE 'tTableIndexStats table created';
+        RAISE NOTICE 'ttableindexstats table created';
     END IF;
 END $OUTER$;
 
 -- Grant permissions
 DO $OUTER$
 BEGIN
-    RAISE NOTICE 'Granting permissions on tTableIndexStats';
-    GRANT SELECT, INSERT ON dba.tTableIndexStats TO etl_user;
-    GRANT ALL ON dba.tTableIndexStats TO yostfundsadmin;
-    GRANT USAGE, SELECT ON SEQUENCE dba.tTableIndexStats_statId_seq TO etl_user;
-    RAISE NOTICE 'Permissions granted on tTableIndexStats';
+    RAISE NOTICE 'Granting permissions on ttableindexstats';
+    GRANT SELECT, INSERT ON dba.ttableindexstats TO etl_user;
+    GRANT ALL ON dba.ttableindexstats TO yostfundsadmin;
+    GRANT USAGE, SELECT ON SEQUENCE dba.ttableindexstats_statid_seq TO etl_user;
+    RAISE NOTICE 'Permissions granted on ttableindexstats';
 END $OUTER$;
 
 -- Create index for faster queries
 DO $OUTER$
 BEGIN
-    RAISE NOTICE 'Creating index idx_tTableIndexStats_snapshotTime';
+    RAISE NOTICE 'Creating index idx_ttableindexstats_snapshottime';
     IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE schemaname = 'dba' AND indexname = 'idx_ttableindexstats_snapshottime') THEN
-        CREATE INDEX idx_tTableIndexStats_snapshotTime ON dba.tTableIndexStats(snapshotTime);
-        RAISE NOTICE 'Index idx_tTableIndexStats_snapshotTime created';
+        CREATE INDEX idx_ttableindexstats_snapshottime ON dba.ttableindexstats(snapshottime);
+        RAISE NOTICE 'Index idx_ttableindexstats_snapshottime created';
     END IF;
 END $OUTER$;
 
 -- Create procedure to capture table and index stats
 DO $OUTER$
 BEGIN
-    RAISE NOTICE 'Creating pCaptureTableIndexStats procedure';
-    CREATE OR REPLACE PROCEDURE dba.pCaptureTableIndexStats()
+    RAISE NOTICE 'Creating pcapturetableindexstats procedure';
+    CREATE OR REPLACE PROCEDURE dba.pcapturetableindexstats()
     LANGUAGE plpgsql
     AS $INNER$
     BEGIN
         -- Capture table stats
-        INSERT INTO dba.tTableIndexStats (
-            snapshotTime,
-            schemaName,
-            tableName,
-            indexName,
-            rowCount,
-            seqScans,
-            idxScans,
+        INSERT INTO dba.ttableindexstats (
+            snapshottime,
+            schemaname,
+            tablename,
+            indexname,
+            rowcount,
+            seqscans,
+            idxscans,
             inserts,
             updates,
             deletes,
-            totalSize
+            totalsize
         )
         SELECT 
             CURRENT_TIMESTAMP,
             schemaname,
             relname,
-            NULL AS indexName,
+            NULL AS indexname,
             n_live_tup,
             seq_scan,
             idx_scan,
@@ -91,31 +91,31 @@ BEGIN
         FROM pg_stat_user_tables;
         
         -- Capture index stats
-        INSERT INTO dba.tTableIndexStats (
-            snapshotTime,
-            schemaName,
-            tableName,
-            indexName,
-            rowCount,
-            seqScans,
-            idxScans,
+        INSERT INTO dba.ttableindexstats (
+            snapshottime,
+            schemaname,
+            tablename,
+            indexname,
+            rowcount,
+            seqscans,
+            idxscans,
             inserts,
             updates,
             deletes,
-            totalSize
+            totalsize
         )
         SELECT 
             CURRENT_TIMESTAMP,
             s.schemaname,
-            s.relname AS tableName,
-            s.indexrelname AS indexName,
-            NULL AS rowCount,
-            NULL AS seqScans,
-            s.idx_scan AS idxScans,
+            s.relname AS tablename,
+            s.indexrelname AS indexname,
+            NULL AS rowcount,
+            NULL AS seqscans,
+            s.idx_scan AS idxscans,
             NULL AS inserts,
             NULL AS updates,
             NULL AS deletes,
-            pg_total_relation_size(s.indexrelid) AS totalSize
+            pg_total_relation_size(s.indexrelid) AS totalsize
         FROM pg_stat_user_indexes s
         JOIN pg_index i ON s.indexrelid = i.indexrelid
         WHERE NOT i.indisprimary;
@@ -123,14 +123,14 @@ BEGIN
         COMMIT;
     EXCEPTION
         WHEN OTHERS THEN
-            INSERT INTO dba.tLogEntry (
-                runUuid,
+            INSERT INTO dba.tlogentry (
+                runuuid,
                 timestamp,
-                processType,
+                processtype,
                 stepcounter,
-                userName,
-                stepRuntime,
-                totalRuntime,
+                username,
+                stepruntime,
+                totalruntime,
                 message
             )
             VALUES (
@@ -147,13 +147,13 @@ BEGIN
             RAISE NOTICE 'Stats capture failed: %', SQLERRM;
     END;
     $INNER$;
-    RAISE NOTICE 'pCaptureTableIndexStats procedure created';
+    RAISE NOTICE 'pcapturetableindexstats procedure created';
 END $OUTER$;
 
 -- Grant execute permission
 DO $OUTER$
 BEGIN
-    RAISE NOTICE 'Granting execute permission on pCaptureTableIndexStats';
-    GRANT EXECUTE ON PROCEDURE dba.pCaptureTableIndexStats() TO etl_user;
-    RAISE NOTICE 'Execute permission granted on pCaptureTableIndexStats';
+    RAISE NOTICE 'Granting execute permission on pcapturetableindexstats';
+    GRANT EXECUTE ON PROCEDURE dba.pcapturetableindexstats() TO etl_user;
+    RAISE NOTICE 'Execute permission granted on pcapturetableindexstats';
 END $OUTER$;

@@ -1,10 +1,10 @@
 -- Create procedure to monitor long-running queries
-CREATE OR REPLACE PROCEDURE dba.pMonitorLongRunningQueries(thresholdMinutes INTEGER)
+CREATE OR REPLACE PROCEDURE dba.pmonitorlongrunningqueries(thresholdminutes INTEGER)
 LANGUAGE plpgsql
 AS $$
 DECLARE
     r RECORD;
-    runUuid UUID := gen_random_uuid();
+    runuuid UUID := gen_random_uuid();
 BEGIN
     FOR r IN (
         SELECT
@@ -13,32 +13,32 @@ BEGIN
             ,application_name
             ,state
             ,query
-            ,EXTRACT(EPOCH FROM (now() - query_start)) / 60 AS runningMinutes
+            ,EXTRACT(EPOCH FROM (now() - query_start)) / 60 AS runningminutes
         FROM pg_stat_activity
         WHERE state = 'active'
           AND query_start IS NOT NULL
-          AND now() - query_start > (thresholdMinutes || ' minutes')::INTERVAL
+          AND now() - query_start > (thresholdminutes || ' minutes')::INTERVAL
           AND usename != 'postgres'
     )
     LOOP
-        INSERT INTO dba.tLogEntry (
-            runUuid
+        INSERT INTO dba.tlogentry (
+            runuuid
             ,timestamp
-            ,processType
+            ,processtype
             ,stepcounter
-            ,userName
-            ,stepRuntime
-            ,totalRuntime
+            ,username
+            ,stepruntime
+            ,totalruntime
             ,message
         )
         VALUES (
-            runUuid
+            runuuid
             ,CURRENT_TIMESTAMP
             ,'QueryMonitor'
             ,'pid_' || r.pid
             ,r.usename
-            ,r.runningMinutes * 60
-            ,r.runningMinutes * 60
+            ,r.runningminutes * 60
+            ,r.runningminutes * 60
             ,format('Long-running query: PID=%s, App=%s, Query=%s', 
                    r.pid, r.application_name, r.query)
         );
@@ -47,18 +47,18 @@ BEGIN
     COMMIT;
 EXCEPTION
     WHEN OTHERS THEN
-        INSERT INTO dba.tLogEntry (
-            runUuid
+        INSERT INTO dba.tlogentry (
+            runuuid
             ,timestamp
-            ,processType
+            ,processtype
             ,stepcounter
-            ,userName
-            ,stepRuntime
-            ,totalRuntime
+            ,username
+            ,stepruntime
+            ,totalruntime
             ,message
         )
         VALUES (
-            runUuid
+            runuuid
             ,CURRENT_TIMESTAMP
             ,'QueryMonitor'
             ,'error'
@@ -73,4 +73,4 @@ END;
 $$;
 
 -- Grant execute permission
-GRANT EXECUTE ON PROCEDURE dba.pMonitorLongRunningQueries(INTEGER) TO etl_user;
+GRANT EXECUTE ON PROCEDURE dba.pmonitorlongrunningqueries(INTEGER) TO etl_user;
