@@ -15,7 +15,6 @@ sys.path.append(str(Path.home() / 'client_etl_workflow'))
 
 # Configuration
 LOG_DIR = ROOT_DIR / 'logs'
-# Directory for log files (CSV and TXT).
 
 def xls_to_csv(input_filepath):
     """Convert an XLS/XLSX file to CSV and save it in the same directory."""
@@ -76,10 +75,37 @@ def xls_to_csv(input_filepath):
                 return
         
         df.to_csv(output_filepath, index=False, quoting=csv.QUOTE_NONNUMERIC, quotechar='"')
-        os.chmod(output_filepath, 0o660)
-        os.chown(output_filepath, os.getuid(), os.getgrnam('etl_group').gr_gid)
-        log_message(log_file, "Conversion", f"Successfully converted {input_filepath} to {output_filepath}", 
+        log_message(log_file, "Conversion", f"CSV file written to {output_filepath}", 
                     run_uuid=run_uuid, stepcounter="Conversion_3", user=user, script_start_time=script_start_time)
+        
+        # Set file permissions
+        try:
+            os.chmod(output_filepath, 0o660)
+            log_message(log_file, "Conversion", f"Set permissions to 660 on {output_filepath}", 
+                        run_uuid=run_uuid, stepcounter="Conversion_4", user=user, script_start_time=script_start_time)
+        except Exception as e:
+            log_message(log_file, "Error", f"Failed to set permissions on {output_filepath}: {str(e)}", 
+                        run_uuid=run_uuid, stepcounter="Conversion_5", user=user, script_start_time=script_start_time)
+        
+        # Set file ownership to include etl_group
+        try:
+            import grp
+            gid = grp.getgrnam('etl_group').gr_gid
+            os.chown(output_filepath, os.getuid(), gid)
+            log_message(log_file, "Conversion", f"Set ownership to user {os.getuid()} and group etl_group on {output_filepath}", 
+                        run_uuid=run_uuid, stepcounter="Conversion_6", user=user, script_start_time=script_start_time)
+        except (AttributeError, KeyError, OSError) as e:
+            log_message(log_file, "Warning", f"Failed to set group ownership to etl_group on {output_filepath}: {str(e)}. Proceeding with default ownership.", 
+                        run_uuid=run_uuid, stepcounter="Conversion_7", user=user, script_start_time=script_start_time)
+            # Log current group information for debugging
+            try:
+                import subprocess
+                groups = subprocess.check_output(['groups'], text=True).strip()
+                log_message(log_file, "Debug", f"Current user groups: {groups}", 
+                            run_uuid=run_uuid, stepcounter="Conversion_8", user=user, script_start_time=script_start_time)
+            except Exception as e:
+                log_message(log_file, "Debug", f"Failed to retrieve user groups: {str(e)}", 
+                            run_uuid=run_uuid, stepcounter="Conversion_9", user=user, script_start_time=script_start_time)
     
     except Exception as e:
         log_message(log_file, "Error", f"Failed to convert {input_filepath}: {str(e)}", 
