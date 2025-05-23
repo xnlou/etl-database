@@ -371,9 +371,143 @@ BEGIN
             ('Deleted', 'Dataset has been marked for deletion'),
             ('New', 'Default status of every new dataset'),
             ('Failed', 'Status if something goes wrong'),
-            ('Empty', 'Dataset has no data'),
-            ;
+            ('Empty', 'Dataset has no data');
         RAISE NOTICE 'Line 276: Inserted data into tdatastatus';
     END IF;
     RAISE NOTICE 'Line 278: Completed tdatastatus insert block';
+END $OUTER$;
+
+-- Line 281: Create tholidays table if it doesn't exist
+DO $OUTER$
+BEGIN
+    RAISE NOTICE 'Line 281: Starting creation of tholidays table';
+    IF NOT EXISTS (SELECT 1 FROM pg_tables WHERE schemaname = 'dba' AND tablename = 'tholidays') THEN
+        CREATE TABLE dba.tholidays (
+            holiday_date DATE PRIMARY KEY,
+            holiday_name TEXT,
+            createddate TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            createdby VARCHAR(50) NOT NULL DEFAULT CURRENT_USER
+        );
+
+        COMMENT ON TABLE dba.tholidays IS 'Stores holiday dates for business day calculations.';
+        COMMENT ON COLUMN dba.tholidays.holiday_date IS 'The date of the holiday (primary key).';
+        COMMENT ON COLUMN dba.tholidays.holiday_name IS 'Name of the holiday.';
+        COMMENT ON COLUMN dba.tholidays.createddate IS 'Timestamp when the record was created.';
+        COMMENT ON COLUMN dba.tholidays.createdby IS 'User who created the record.';
+        RAISE NOTICE 'Line 294: tholidays table and comments created';
+    END IF;
+    RAISE NOTICE 'Line 296: Completed tholidays block';
+END $OUTER$;
+
+-- Grant permissions on tholidays
+DO $OUTER$
+BEGIN
+    RAISE NOTICE 'Line 300: Granting permissions on tholidays';
+    GRANT SELECT, INSERT ON dba.tholidays TO etl_user;
+    GRANT ALL ON dba.tholidays TO yostfundsadmin;
+    RAISE NOTICE 'Line 303: Permissions granted on tholidays';
+END $OUTER$;
+
+-- Line 306: Insert sample holidays into tholidays if the table is empty
+DO $OUTER$
+BEGIN
+    RAISE NOTICE 'Line 306: Starting insert into tholidays';
+    IF (SELECT COUNT(*) FROM dba.tholidays) = 0 THEN
+        INSERT INTO dba.tholidays (holiday_date, holiday_name) VALUES
+            ('2025-01-01', 'New Year''s Day'),
+            ('2025-07-04', 'Independence Day'),
+            ('2025-12-25', 'Christmas Day');
+        RAISE NOTICE 'Line 311: Inserted sample holidays into tholidays';
+    END IF;
+    RAISE NOTICE 'Line 313: Completed tholidays insert block';
+END $OUTER$;
+
+-- Line 316: Create tcalendardays table if it doesn't exist
+DO $OUTER$
+BEGIN
+    RAISE NOTICE 'Line 316: Starting creation of tcalendardays table';
+    IF NOT EXISTS (SELECT 1 FROM pg_tables WHERE schemaname = 'dba' AND tablename = 'tcalendardays') THEN
+        CREATE TABLE dba.tcalendardays (
+            fulldate DATE PRIMARY KEY,
+            downame VARCHAR(10),
+            downum INT,
+            isbusday BOOLEAN,
+            isholiday BOOLEAN,
+            previous_business_date DATE
+        );
+
+        COMMENT ON TABLE dba.tcalendardays IS 'Stores calendar dates with business day and holiday information for ETL date calculations.';
+        COMMENT ON COLUMN dba.tcalendardays.fulldate IS 'The date (primary key).';
+        COMMENT ON COLUMN dba.tcalendardays.downame IS 'Day of week name (e.g., Monday).';
+        COMMENT ON COLUMN dba.tcalendardays.downum IS 'Day of week number (0=Sunday, 1=Monday, ..., 6=Saturday).';
+        COMMENT ON COLUMN dba.tcalendardays.isbusday IS 'True if the date is a business day (Monday-Friday), False otherwise.';
+        COMMENT ON COLUMN dba.tcalendardays.isholiday IS 'True if the date is a holiday, False otherwise.';
+        COMMENT ON COLUMN dba.tcalendardays.previous_business_date IS 'The most recent business day before this date.';
+        RAISE NOTICE 'Line 330: tcalendardays table and comments created';
+    END IF;
+    RAISE NOTICE 'Line 332: Completed tcalendardays block';
+END $OUTER$;
+
+-- Grant permissions on tcalendardays
+DO $OUTER$
+BEGIN
+    RAISE NOTICE 'Line 336: Granting permissions on tcalendardays';
+    GRANT SELECT, INSERT ON dba.tcalendardays TO etl_user;
+    GRANT ALL ON dba.tcalendardays TO yostfundsadmin;
+    RAISE NOTICE 'Line 339: Permissions granted on tcalendardays';
+END $OUTER$;
+
+-- Line 342: Populate tcalendardays if the table is empty
+DO $OUTER$
+BEGIN
+    RAISE NOTICE 'Line 342: Starting population of tcalendardays';
+    IF (SELECT COUNT(*) FROM dba.tcalendardays) = 0 THEN
+        -- Insert calendar data for 2020 to 2030
+        INSERT INTO dba.tcalendardays (fulldate, downame, downum, isbusday, isholiday)
+        SELECT 
+            d AS fulldate,
+            TO_CHAR(d, 'Day') AS downame,
+            EXTRACT(DOW FROM d)::INT AS downum,
+            EXTRACT(DOW FROM d) NOT IN (0, 6) AS isbusday,
+            FALSE AS isholiday
+        FROM generate_series('2020-01-01'::DATE, '2030-12-31'::DATE, INTERVAL '1 day') AS d
+        ON CONFLICT (fulldate) DO NOTHING;
+
+        -- Trim whitespace from downame
+        UPDATE dba.tcalendardays
+        SET downame = TRIM(downame);
+
+        -- Update isholiday based on tholidays
+        UPDATE dba.tcalendardays c
+        SET isholiday = TRUE
+        WHERE c.fulldate IN (SELECT holiday_date FROM dba.tholidays);
+
+        -- Update previous_business_date
+        UPDATE dba.tcalendardays c1
+        SET previous_business_date = (
+            SELECT MAX(c2.fulldate)
+            FROM dba.tcalendardays c2
+            WHERE c2.fulldate < c1.fulldate
+            AND c2.isbusday = TRUE
+            AND c2.isholiday = FALSE
+        );
+
+        RAISE NOTICE 'Line 366: Populated tcalendardays with data';
+    END IF;
+    RAISE NOTICE 'Line 368: Completed tcalendardays population block';
+END $OUTER$;
+
+-- Line 371: Create indexes for tcalendardays if they don't exist
+DO $OUTER$
+BEGIN
+    RAISE NOTICE 'Line 371: Starting creation of tcalendardays indexes';
+    IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE schemaname = 'dba' AND indexname = 'idx_tcalendardays_fulldate') THEN
+        CREATE INDEX idx_tcalendardays_fulldate ON dba.tcalendardays (fulldate);
+        RAISE NOTICE 'Line 375: idx_tcalendardays_fulldate index created';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE schemaname = 'dba' AND indexname = 'idx_tcalendardays_isbusday') THEN
+        CREATE INDEX idx_tcalendardays_isbusday ON dba.tcalendardays (isbusday);
+        RAISE NOTICE 'Line 379: idx_tcalendardays_isbusday index created';
+    END IF;
+    RAISE NOTICE 'Line 381: Completed tcalendardays indexes block';
 END $OUTER$;
