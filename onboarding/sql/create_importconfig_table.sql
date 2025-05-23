@@ -173,7 +173,7 @@ BEGIN
         CALL dba.pimportconfigi(
             'MeetMaxURLCheckImport',
             'MeetMax',
-            'MetaData',
+            'MeetMaxURL',
             '/home/yostfundsadmin/client_etl_workflow/file_watcher',
             '/home/yostfundsadmin/client_etl_workflow/archive/import_MeetMaxURLCheckImport',
             '\d{8}T\d{6}_MeetMaxURLCheck\.csv',
@@ -215,7 +215,7 @@ BEGIN
         CALL dba.pimportconfigi(
             'MeetMax_Events_XLS_Import',
             'MeetMax',
-            'MetaData',
+            'MeetMaxEvents',
             '/home/yostfundsadmin/client_etl_workflow/file_watcher',
             '/home/yostfundsadmin/client_etl_workflow/archive/meetmaxevents',
             '^\d{8}T\d{6}_MeetMax_\d+\.xls$',
