@@ -8,7 +8,7 @@ import pandas as pd
 import psycopg2
 from psycopg2 import sql
 from pathlib import Path
-import grp  # Added for getgrnam
+import grp  # For getgrnam
 # Add root directory to sys.path
 sys.path.append(str(Path(__file__).parent.parent))
 from datetime import datetime
@@ -369,7 +369,7 @@ def is_invalid_event_file(file_path, log_file, run_uuid, user, script_start_time
             if first_column.str.contains('Invalid Event ID', case=False, na=False).any():
                 log_message(log_file, "Warning", f"File {file_path} contains 'Invalid Event ID' (xlrd). Treating as empty dataset.",
                             run_uuid=run_uuid, stepcounter="FileValidation_0", user=user, script_start_time=script_start_time)
-                return True, True
+            return True, True
             return False, True
         except Exception as e_xlrd:
             log_message(log_file, "Warning", f"Failed to read XLS {file_path} with openpyxl or xlrd: openpyxl error: {str(e_openpyxl)}, xlrd error: {str(e_xlrd)}. Treating as empty dataset.",
@@ -643,9 +643,11 @@ def generic_import(config_id):
         if config["file_type"] in ["XLS", "XLSX"]:
             csv_path = os.path.splitext(file_path)[0] + '.csv'
             try:
+                # Set PARENT_LOG_FILE to ensure xls_to_csv logs to the same file
+                os.environ["PARENT_LOG_FILE"] = str(log_file)
                 xls_to_csv(file_path)
                 if not os.path.exists(csv_path):
-                    log_message(log_file, "Error", f"Failed to find CSV at {csv_path} after conversion of {filename}. Check xls_to_csv log at {LOG_DIR}/xls_to_csv_{timestamp}.txt",
+                    log_message(log_file, "Error", f"Failed to find CSV at {csv_path} after conversion of {filename}",
                                 run_uuid=run_uuid, stepcounter=f"File_{filename}_4", user=user, script_start_time=script_start_time)
                     success = False
                     file_success = False
@@ -653,7 +655,7 @@ def generic_import(config_id):
                 log_message(log_file, "Conversion", f"Converted {filename} to {csv_path}",
                             run_uuid=run_uuid, stepcounter=f"File_{filename}_5", user=user, script_start_time=script_start_time)
             except Exception as e:
-                log_message(log_file, "Error", f"Conversion error for {filename}: {str(e)}\n{traceback.format_exc()}. Check xls_to_csv log at {LOG_DIR}/xls_to_csv_{timestamp}.txt",
+                log_message(log_file, "Error", f"Conversion error for {filename}: {str(e)}\n{traceback.format_exc()}",
                             run_uuid=run_uuid, stepcounter=f"File_{filename}_6", user=user, script_start_time=script_start_time)
                 success = False
                 file_success = False

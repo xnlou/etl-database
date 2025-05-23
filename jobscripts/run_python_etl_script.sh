@@ -40,6 +40,12 @@ echo "Permissions of $VENV_DIR/bin/python: $(ls -l $VENV_DIR/bin/python)"
 # Activate virtual environment
 source "$VENV_DIR/bin/activate"
 
+# Set PARENT_LOG_FILE environment variable if provided by caller
+if [ -n "$PARENT_LOG_FILE" ]; then
+    export PARENT_LOG_FILE
+    echo "Using parent log file: $PARENT_LOG_FILE"
+fi
+
 # Run the script with any additional arguments using full path to python
 "$VENV_DIR/bin/python" "$SCRIPT_PATH" "$@"
 

@@ -27,6 +27,11 @@ def log_message(log_file, process_type, message, use_db=True, **kwargs):
     current_time = time.time()
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     
+    # Check for parent log file from environment variable
+    parent_log_file = os.environ.get('PARENT_LOG_FILE')
+    if parent_log_file:
+        log_file = parent_log_file  # Use parent log file if specified
+    
     # Handle log_id
     with _log_id_lock:
         log_id = _log_id_counter
