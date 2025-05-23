@@ -4,43 +4,43 @@ LANGUAGE plpgsql
 AS $$
 DECLARE
     r RECORD;
-    runuuid UUID := gen_random_uuid();
+    run_uuid UUID := gen_random_uuid();
 BEGIN
     FOR r IN (
         SELECT
             pid
-            ,usename
-            ,application_name
-            ,state
-            ,query
-            ,EXTRACT(EPOCH FROM (now() - query_start)) / 60 AS runningminutes
+            , usename
+            , application_name
+            , state
+            , query
+            , EXTRACT(EPOCH FROM (NOW() - query_start)) / 60 AS runningminutes
         FROM pg_stat_activity
         WHERE state = 'active'
           AND query_start IS NOT NULL
-          AND now() - query_start > (thresholdminutes || ' minutes')::INTERVAL
+          AND NOW() - query_start > (thresholdminutes || ' minutes')::INTERVAL
           AND usename != 'postgres'
     )
     LOOP
         INSERT INTO dba.tlogentry (
-            runuuid
-            ,timestamp
-            ,processtype
-            ,stepcounter
-            ,username
-            ,stepruntime
-            ,totalruntime
-            ,message
+            run_uuid
+            , timestamp
+            , processtype
+            , stepcounter
+            , username
+            , stepruntime
+            , totalruntime
+            , message
         )
         VALUES (
-            runuuid
-            ,CURRENT_TIMESTAMP
-            ,'QueryMonitor'
-            ,'pid_' || r.pid
-            ,r.usename
-            ,r.runningminutes * 60
-            ,r.runningminutes * 60
-            ,format('Long-running query: PID=%s, App=%s, Query=%s', 
-                   r.pid, r.application_name, r.query)
+            run_uuid
+            , CURRENT_TIMESTAMP
+            , 'QueryMonitor'
+            , 'pid_' || r.pid
+            , r.usename
+            , r.runningminutes * 60
+            , r.runningminutes * 60
+            , format('Long-running query: PID=%s, App=%s, Query=%s', 
+                     r.pid, r.application_name, r.query)
         );
     END LOOP;
     
@@ -48,24 +48,24 @@ BEGIN
 EXCEPTION
     WHEN OTHERS THEN
         INSERT INTO dba.tlogentry (
-            runuuid
-            ,timestamp
-            ,processtype
-            ,stepcounter
-            ,username
-            ,stepruntime
-            ,totalruntime
-            ,message
+            run_uuid
+            , timestamp
+            , processtype
+            , stepcounter
+            , username
+            , stepruntime
+            , totalruntime
+            , message
         )
         VALUES (
-            runuuid
-            ,CURRENT_TIMESTAMP
-            ,'QueryMonitor'
-            ,'error'
-            ,CURRENT_USER
-            ,NULL
-            ,NULL
-            ,'Error monitoring queries: ' || SQLERRM
+            run_uuid
+            , CURRENT_TIMESTAMP
+            , 'QueryMonitor'
+            , 'error'
+            , CURRENT_USER
+            , NULL
+            , NULL
+            , 'Error monitoring queries: ' || SQLERRM
         );
         COMMIT;
         RAISE NOTICE 'Query monitoring failed: %', SQLERRM;
