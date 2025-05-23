@@ -511,3 +511,23 @@ BEGIN
     END IF;
     RAISE NOTICE 'Line 381: Completed tcalendardays indexes block';
 END $OUTER$;
+
+-- Previous sections (Lines 1-383) remain unchanged...
+
+-- Line 384: Insert data into tdatasettype if the table is empty
+DO $OUTER$
+BEGIN
+    RAISE NOTICE 'Line 384: Starting insert into tdatasettype';
+    IF (SELECT COUNT(*) FROM dba.tdatasettype) = 0 THEN
+        INSERT INTO dba.tdatasettype (datasettypeid, typename) VALUES
+            (1, 'Metadata'),
+            (2, 'MeetMaxURL'),
+            (3, 'MeetMaxEvents');
+
+        -- Synchronize the sequence to the maximum datasettypeid
+        PERFORM setval('dba.tdatasettype_datasettypeid_seq', (SELECT MAX(datasettypeid) FROM dba.tdatasettype));
+        
+        RAISE NOTICE 'Line 391: Inserted data into tdatasettype and synchronized sequence';
+    END IF;
+    RAISE NOTICE 'Line 393: Completed tdatasettype insert block';
+END $OUTER$;
