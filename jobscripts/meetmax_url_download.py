@@ -2,7 +2,6 @@ import sys
 import os
 import psycopg2
 from pathlib import Path
-# Add the absolute path to the parent directory to locate systemscripts
 sys.path.append(str(Path.home() / 'client_etl_workflow'))
 import time
 import uuid
@@ -52,21 +51,18 @@ def fetch_url_data(log_file, run_uuid, user, script_start_time):
         with psycopg2.connect(**DB_PARAMS) as conn:
             with conn.cursor() as cur:
                 cur.execute("""
-                    SELECT 
-                        mm.datasetid,
+                    SELECT DISTINCT
                         mm.eventid,
-                        mm.url,
-                        mm.ifexists,
-                        mm.invalideventid,
                         mm.isdownloadable,
                         mm.downloadlink,
                         ds.isactive 
                     FROM public.tmeetmaxurlcheck mm
                     JOIN dba.tdataset ds ON ds.datasetid = mm.datasetid
                     WHERE ds.isactive = true
+                    AND mm.isdownloadable = '1'
                 """)
                 rows = cur.fetchall()
-                columns = ['DatasetID', 'EventID', 'URL', 'IfExists', 'InvalidEventID', 'IsDownloadable', 'DownloadLink', 'IsActive']
+                columns = ['EventID', 'IsDownloadable', 'DownloadLink', 'IsActive']
                 df = pd.DataFrame(rows, columns=columns)
                 # Convert IsDownloadable to integer
                 df['IsDownloadable'] = df['IsDownloadable'].astype(int)
