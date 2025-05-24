@@ -55,6 +55,7 @@ ORDER BY status, ticker, datasetdate;
 --reporting
 
 
+
 WITH DateRange AS (
     SELECT 
         c1.fulldate AS periodenddate,
@@ -120,16 +121,16 @@ from EventsDataSets ed
 join public.tmeetmaxevent t on t.datasetid  = ed.datasetid
 group by
 	ed.eventid
-	,COALESCE(
+		,UPPER(COALESCE(
         company_name,
         "company/organization",
         company_description,
         "company_description_(bio)",
         organization_description,
         description
-    )
-    , COALESCE(ticker, company_ticker) 
-    )
+    ))
+    , UPPER(COALESCE(ticker, company_ticker)) 
+)
     SELECT 
 	    e.*
 	    ,cd.url
@@ -142,14 +143,13 @@ group by
 			when m.maxdatasetdate > e.maxdate then 'removed'
 			when e.mindate = e.maxdate and e.maxdate = CURRENT_DATE then 'added'
 			when e.mindate = e.maxdate and e.maxdate < CURRENT_DATE then 'removed'
-			when m.maxdatasetdate = e.maxdate then 'current'
+			when e.maxdate < CURRENT_DATE then 'removed'
 			when e.mindate <> e.maxdate and e.maxdate = CURRENT_DATE then 'normal'
 		end as scenario
 	)x	on true
 	WHERE 1=1
---	and x.scenario <> 'current'
-	order by x.scenario desc
---AND e.maxdate <> m.Maxdatasetdate;
+	and x.scenario <> 'normal'
+	order by x.scenario desc,ticker
 
 
 select
