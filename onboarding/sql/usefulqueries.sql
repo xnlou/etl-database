@@ -51,3 +51,119 @@ FROM (
     WHERE datasetdate = '2025-05-23'
 ) AS removed
 ORDER BY status, ticker, datasetdate;
+
+--reporting
+
+
+WITH DateRange AS (
+    SELECT 
+        c1.fulldate AS periodenddate,
+        (SELECT MAX(c2.fulldate)
+         FROM dba.tcalendardays c2
+         WHERE c2.fulldate <= (c1.fulldate - INTERVAL '45 days')
+         AND c2.isbusday = TRUE
+         AND c2.isholiday = FALSE
+        ) AS periodstartdate
+    FROM dba.tcalendardays c1
+    WHERE c1.fulldate = CURRENT_DATE
+),
+EventsDataSets AS (
+    SELECT 
+        t.datasetid,
+        t.datasetdate,
+        t.label as eventid
+    FROM dba.tdataset t
+    CROSS JOIN DateRange d
+    WHERE t.datasettypeid = 3
+    AND t.isactive = TRUE
+    AND t.datasetdate BETWEEN d.periodstartdate AND d.periodenddate
+),
+MaxURLCheckDate AS (
+    SELECT 
+        MAX(t.datasetdate) AS maxdatasetdate
+    FROM dba.tdataset t
+    WHERE t.isactive = true
+    and t.datasettypeid = 2
+),
+LatestURLCheckDataset AS (
+    SELECT 
+    	 eventid
+        ,m.url
+        ,m.ifexists
+        ,m.invalideventid
+        ,m.isdownloadable
+        ,m.downloadlink
+        ,m.statuscode
+        ,m.title
+        ,mu.maxdatasetdate
+    FROM public.tmeetmaxurlcheck m
+    JOIN dba.tdataset t ON t.datasetid = m.datasetid
+    CROSS JOIN MaxURLCheckDate mu
+    WHERE t.datasetdate = mu.maxdatasetdate
+    AND t.isactive = TRUE
+),
+EventsData as (
+select
+	ed.eventid
+	,UPPER(COALESCE(
+        company_name,
+        "company/organization",
+        company_description,
+        "company_description_(bio)",
+        organization_description,
+        description
+    )) AS company_name
+    , UPPER(COALESCE(ticker, company_ticker)) AS ticker
+    ,min(ed.datasetdate) as mindate
+    ,max(ed.datasetdate) as maxdate
+from EventsDataSets ed
+join public.tmeetmaxevent t on t.datasetid  = ed.datasetid
+group by
+	ed.eventid
+	,COALESCE(
+        company_name,
+        "company/organization",
+        company_description,
+        "company_description_(bio)",
+        organization_description,
+        description
+    )
+    , COALESCE(ticker, company_ticker) 
+    )
+    SELECT 
+	    e.*
+	    ,cd.url
+	    ,x.scenario
+	FROM EventsData e
+	CROSS JOIN MaxURLCheckDate m
+	join LatestURLCheckDataset cd on cd.eventid = e.eventid
+	LEFT JOIN lateral(
+		select case
+			when m.maxdatasetdate > e.maxdate then 'removed'
+			when e.mindate = e.maxdate and e.maxdate = CURRENT_DATE then 'added'
+			when e.mindate = e.maxdate and e.maxdate < CURRENT_DATE then 'removed'
+			when m.maxdatasetdate = e.maxdate then 'current'
+			when e.mindate <> e.maxdate and e.maxdate = CURRENT_DATE then 'normal'
+		end as scenario
+	)x	on true
+	WHERE 1=1
+--	and x.scenario <> 'current'
+	order by x.scenario desc
+--AND e.maxdate <> m.Maxdatasetdate;
+
+
+select
+	t2.*
+	,t.*
+from public.tmeetmaxevent t 
+join dba.tdataset t2 on t2.datasetid  =t.datasetid
+where t.datasetid in (374
+,1254
+,1105
+,1789)
+and company_name = 'DINNER - Samir Shah, Former ICLR Executive'
+and isactive = true
+order by datasetdate
+
+
+
