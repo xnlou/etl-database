@@ -46,38 +46,73 @@ ensure_directory_exists(FILE_WATCHER_DIR)
 ensure_directory_exists(LOG_DIR)
 
 def fetch_url_data(log_file, run_uuid, user, script_start_time):
-    """Fetch URL data from public.tmeetmaxurlcheck and dba.tdataset."""
+    """Fetch URL data from public.tmeetmaxurlcheck and dba.tdataset for the most recent datasetdate."""
     try:
         with psycopg2.connect(**DB_PARAMS) as conn:
             with conn.cursor() as cur:
                 cur.execute("""
-                    SELECT DISTINCT
-                        mm.eventid,
-                        mm.isdownloadable,
-                        mm.downloadlink,
-                        ds.isactive 
-                    FROM public.tmeetmaxurlcheck mm
-                    JOIN dba.tdataset ds ON ds.datasetid = mm.datasetid
-                    WHERE ds.isactive = true
-                    AND mm.isdownloadable = '1'
+                    WITH MaxURLCheckDate AS (
+                        SELECT 
+                            MAX(t.datasetdate) AS maxdatasetdate
+                        FROM dba.tdataset t
+                        WHERE t.isactive = TRUE
+                        AND t.datasettypeid = 2
+                    ),
+                    LatestURLCheckDataset AS (
+                        SELECT DISTINCT
+                            mm.eventid,
+                            mm.isdownloadable,
+                            mm.downloadlink,
+                            ds.isactive,
+                            mu.maxdatasetdate
+                        FROM public.tmeetmaxurlcheck mm
+                        JOIN dba.tdataset ds ON ds.datasetid = mm.datasetid
+                        CROSS JOIN MaxURLCheckDate mu
+                        WHERE ds.isactive = TRUE
+                        AND mm.isdownloadable = '1'
+                        AND ds.datasetdate = mu.maxdatasetdate
+                    )
+                    SELECT 
+                        eventid,
+                        isdownloadable,
+                        downloadlink,
+                        isactive,
+                        maxdatasetdate
+                    FROM LatestURLCheckDataset
+                    ORDER BY eventid;
                 """)
                 rows = cur.fetchall()
-                columns = ['EventID', 'IsDownloadable', 'DownloadLink', 'IsActive']
+                columns = ['EventID', 'IsDownloadable', 'DownloadLink', 'IsActive', 'MaxDatasetDate']
                 df = pd.DataFrame(rows, columns=columns)
+                
                 # Convert IsDownloadable to integer
                 df['IsDownloadable'] = df['IsDownloadable'].astype(int)
+                # Convert IsActive to integer (if needed for downstream processing)
+                df['IsActive'] = df['IsActive'].astype(int)
+                
+                # Log the fetched data details
                 log_message(log_file, "DataFetch", f"Fetched {len(df)} rows from database",
                             run_uuid=run_uuid, stepcounter="DataFetch_0", user=user, script_start_time=script_start_time)
+                if len(df) == 0:
+                    log_message(log_file, "Warning", "No downloadable URLs found for the most recent datasetdate",
+                                run_uuid=run_uuid, stepcounter="DataFetch_1", user=user, script_start_time=script_start_time)
+                else:
+                    log_message(log_file, "Debug", f"MaxDatasetDate: {df['MaxDatasetDate'].iloc[0]}",
+                                run_uuid=run_uuid, stepcounter="DataFetch_1", user=user, script_start_time=script_start_time)
                 log_message(log_file, "Debug", f"DataFrame columns: {df.columns.tolist()}",
-                            run_uuid=run_uuid, stepcounter="DataFetch_1", user=user, script_start_time=script_start_time)
-                log_message(log_file, "Debug", f"IsDownloadable values: {df['IsDownloadable'].value_counts().to_dict()}",
                             run_uuid=run_uuid, stepcounter="DataFetch_2", user=user, script_start_time=script_start_time)
-                log_message(log_file, "Debug", f"DataFrame dtypes: {df.dtypes.to_dict()}",
+                log_message(log_file, "Debug", f"IsDownloadable values: {df['IsDownloadable'].value_counts().to_dict()}",
                             run_uuid=run_uuid, stepcounter="DataFetch_3", user=user, script_start_time=script_start_time)
+                log_message(log_file, "Debug", f"DataFrame dtypes: {df.dtypes.to_dict()}",
+                            run_uuid=run_uuid, stepcounter="DataFetch_4", user=user, script_start_time=script_start_time)
                 return df
     except psycopg2.Error as e:
         log_message(log_file, "Error", f"Database error: {str(e)}",
-                    run_uuid=run_uuid, stepcounter="DataFetch_4", user=user, script_start_time=script_start_time)
+                    run_uuid=run_uuid, stepcounter="DataFetch_5", user=user, script_start_time=script_start_time)
+        return None
+    except Exception as e:
+        log_message(log_file, "Error", f"Unexpected error: {str(e)}",
+                    run_uuid=run_uuid, stepcounter="DataFetch_6", user=user, script_start_time=script_start_time)
         return None
 
 def download_file(event_id, download_url, log_file, run_uuid, user, script_start_time, timestamp):
