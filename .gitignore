@@ -2,6 +2,7 @@ venv/
 logs/*.csv
 logs/*.txt
 logs/*.log
+logs/*
 file_watcher/*.csv
 file_watcher/*.xls
 file_watcher/test/*.xls
