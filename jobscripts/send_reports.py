@@ -1,3 +1,6 @@
+import sys
+from pathlib import Path
+sys.path.append(str(Path.home() / 'client_etl_workflow'))  # Add repository root to sys.path
 import pandas as pd
 import smtplib
 from email.mime.multipart import MIMEMultipart
@@ -12,6 +15,7 @@ import logging
 import csv
 from sqlalchemy import create_engine
 from sqlalchemy.sql import text
+from systemscripts.db_config import SQLALCHEMY_DATABASE_URL  # Import centralized DB config
 
 # Generate log file name with timestamp suffix (yyyyMMddThhmmss)
 log_timestamp = datetime.now().strftime("%Y%m%dT%H%M%S")
@@ -21,15 +25,7 @@ log_file = f"/home/yostfundsadmin/client_etl_workflow/logs/send_reports.log_{log
 logging.basicConfig(filename=log_file, level=logging.INFO, 
                     format='%(asctime)s - %(levelname)s - %(message)s')
 
-# Database connection parameters
-DB_USER = "yostfundsadmin"
-DB_PASSWORD = os.getenv("DB_PASSWORD", "etlserver2025!")
-DB_HOST = "localhost"
-DB_PORT = "5432"
-DB_NAME = "feeds"
-
 # Create SQLAlchemy engine
-SQLALCHEMY_DATABASE_URL = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 engine = create_engine(SQLALCHEMY_DATABASE_URL)
 
 # Gmail credentials from environment variables

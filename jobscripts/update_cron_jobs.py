@@ -1,14 +1,8 @@
+import sys
+from pathlib import Path
+sys.path.append(str(Path.home() / 'client_etl_workflow'))  # Add repository root to sys.path
 import psycopg2
-import os
-
-# Database connection parameters
-DB_PARAMS = {
-    "dbname": "feeds",
-    "user": "yostfundsadmin",
-    "password": os.getenv("DB_PASSWORD", "etlserver2025!"),
-    "host": "localhost",
-    "port": "5432"
-}
+from systemscripts.db_config import DB_PARAMS  # Import centralized DB config
 
 # Connect to PostgreSQL database
 conn = psycopg2.connect(**DB_PARAMS)
@@ -22,7 +16,7 @@ report_schedules = cur.fetchall()
 cur.execute("SELECT schedulerID, taskname, frequency, scriptpath, scriptargs FROM dba.tscheduler WHERE datastatusid = 1")
 task_schedules = cur.fetchall()
 
-# Generate cron file
+# Generate cron file directly in /etc/cron.d/etl_jobs
 cron_file = "/etc/cron.d/etl_jobs"
 with open(cron_file, 'w') as f:
     # Add cron jobs for reports
@@ -35,10 +29,6 @@ with open(cron_file, 'w') as f:
         scriptargs = scriptargs if scriptargs else ""
         cron_line = f"{frequency} etl_user /usr/bin/python3 {scriptpath} {scriptargs} >> /home/yostfundsadmin/client_etl_workflow/logs/{taskname}.log 2>&1\n"
         f.write(cron_line)
-
-# Set permissions on the cron file
-os.chmod(cron_file, 0o644)
-os.chown(cron_file, 0, 0)  # root:root
 
 cur.close()
 conn.close()

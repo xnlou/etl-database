@@ -90,11 +90,34 @@ echo "Installing Python dependencies..."
 "$PROJECT_DIR/venv/bin/pip" install numpy==1.26.4 pandas==1.5.3 requests==2.28.1 psycopg2-binary==2.9.5 matplotlib==3.7.1 \
     scrapy==2.11.2 beautifulsoup4==4.12.3 openpyxl==3.1.2 aiohttp==3.9.5 tqdm==4.66.5 xlrd==2.0.1 croniter==2.0.5 sqlalchemy==2.0.30 \
     && echo "Python dependencies installed." || log_error "Failed to install Python dependencies"
-    
+
 # Set permissions for virtual environment
 echo "Setting permissions for virtual environment..."
 sudo chown -R "$CURRENT_USER":etl_group "$PROJECT_DIR/venv" || log_error "Failed to change ownership of virtual environment"
 sudo chmod -R 2770 "$PROJECT_DIR/venv" && echo "Virtual environment permissions set." || log_error "Failed to set virtual environment permissions"
+
+# Configure cron permissions for yostfundsadmin
+echo "Configuring cron permissions for $CURRENT_USER..."
+# Create cron_etl group if it doesn't exist
+if ! getent group cron_etl >/dev/null; then
+    sudo groupadd cron_etl || log_error "Failed to create cron_etl group"
+fi
+
+# Add yostfundsadmin to cron_etl group
+sudo usermod -aG cron_etl "$CURRENT_USER" || log_error "Failed to add $CURRENT_USER to cron_etl group"
+
+# Change group ownership and permissions of /etc/cron.d/
+sudo chgrp cron_etl /etc/cron.d || log_error "Failed to change group ownership of /etc/cron.d to cron_etl"
+sudo chmod 775 /etc/cron.d || log_error "Failed to set permissions on /etc/cron.d"
+
+# Create or update /etc/cron.d/etl_jobs
+CRON_FILE="/etc/cron.d/etl_jobs"
+if [ ! -f "$CRON_FILE" ]; then
+    sudo touch "$CRON_FILE" || log_error "Failed to create $CRON_FILE"
+fi
+sudo chown "$CURRENT_USER":cron_etl "$CRON_FILE" || log_error "Failed to set ownership of $CRON_FILE"
+sudo chmod 664 "$CRON_FILE" || log_error "Failed to set permissions on $CRON_FILE"
+echo "Cron permissions configured for $CURRENT_USER."
 
 echo "=== Setup complete at $(date) ==="
 echo "Check $LOG_FILE for any issues."

@@ -1,11 +1,12 @@
 import sys
 import os
-import psycopg2
 from pathlib import Path
 sys.path.append(str(Path.home() / 'client_etl_workflow'))
 import time
 import uuid
 import requests
+import psycopg2
+from systemscripts.db_config import DB_PARAMS
 import pandas as pd
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
@@ -33,13 +34,8 @@ MAX_WORKERS = 1
 # Number of concurrent download threads in ThreadPoolExecutor.
 # Lower values (e.g., 1) reduce simultaneous requests, making the script more conservative.
 
-# Database connection parameters
-DB_PARAMS = {
-    "dbname": "feeds",
-    "user": "yostfundsadmin",
-    "password": "etlserver2025!",
-    "host": "localhost"
-}
+# Placeholder for download logic
+conn = psycopg2.connect(**DB_PARAMS)
 
 # Ensure directories exist
 ensure_directory_exists(FILE_WATCHER_DIR)
