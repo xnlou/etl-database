@@ -4,8 +4,7 @@ from pathlib import Path
 # Directory Management Module
 
 # Root directory for all ETL workflows
-
-ROOT_DIR = Path.home() / 'client_etl_workflow'
+ROOT_DIR = Path('/home/yostfundsadmin/client_etl_workflow')
 
 # Directory for file watcher
 FILE_WATCHER_DIR = ROOT_DIR / 'file_watcher'
@@ -28,7 +27,7 @@ def ensure_directory_exists(directory):
     """
     if not os.path.exists(directory):
         os.makedirs(directory)
-        os.chmod(directory, 0o770)  # Set permissions to rwxrwx---
+        os.chmod(directory, 0o2770)  # Set permissions to rwxrws---
 
 def initialize_directories():
     """

@@ -5,8 +5,7 @@ set -e  # Exit immediately if a command exits with a non-zero status
 
 # Define paths
 CURRENT_USER=$(whoami)
-HOME_DIR="/home/$CURRENT_USER"
-PROJECT_DIR="$HOME_DIR/client_etl_workflow"
+PROJECT_DIR="/home/yostfundsadmin/client_etl_workflow"
 ONBOARDING_DIR="$PROJECT_DIR/onboarding/sql"
 LOG_DIR="$PROJECT_DIR/logs"
 LOG_FILE="$LOG_DIR/sql_setupscripts_$(date +%Y%m%dT%H%M%S).log"
@@ -81,20 +80,23 @@ fi
 
 # --- End of Privileged Commands Section ---
 
+# Use DB_PASSWORD from environment (sourced from env.sh)
+if [ -z "$DB_PASSWORD" ]; then
+    echo "[ERROR] $(date): DB_PASSWORD environment variable not set."
+    exit 1
+fi
+
 # Check if onboarding directory exists
 if [ ! -d "$ONBOARDING_DIR" ]; then
     echo "[ERROR] $(date): Onboarding directory $ONBOARDING_DIR does not exist."
     exit 1
 fi
 
-# Export PGPASSWORD for psql to avoid password prompt (securely handle in production)
-export PGPASSWORD="etlserver2025!"
-
 # Check if the feeds database exists; if not, create it
 echo "[INFO] $(date): Checking if database $DB_NAME exists..."
-if ! psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname = '$DB_NAME'" | grep -q 1; then
+if ! PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname = '$DB_NAME'" | grep -q 1; then
     echo "[INFO] $(date): Database $DB_NAME does not exist. Creating it..."
-    if createdb -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" "$DB_NAME"; then
+    if PGPASSWORD="$DB_PASSWORD" createdb -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" "$DB_NAME"; then
         echo "[SUCCESS] $(date): Database $DB_NAME created successfully."
     else
         echo "[ERROR] $(date): Failed to create database $DB_NAME."
@@ -114,7 +116,7 @@ for SCRIPT in "${SQL_SCRIPTS[@]}"; do
     fi
 
     echo "[INFO] $(date): Executing $SQL_FILE..."
-    if psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" --set ON_ERROR_STOP=on -f "$SQL_FILE"; then
+    if PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" --set ON_ERROR_STOP=on -f "$SQL_FILE"; then
         echo "[SUCCESS] $(date): Successfully executed $SQL_FILE."
     else
         echo "[ERROR] $(date): Failed to execute $SQL_FILE. Check logs for details."
@@ -122,10 +124,7 @@ for SCRIPT in "${SQL_SCRIPTS[@]}"; do
     fi
 done
 
-# Unset PGPASSWORD for security
-unset PGPASSWORD
-
-# Set permissions for log file (remove chown if unnecessary)
+# Set permissions for log file
 chmod 660 "$LOG_FILE"
 
 echo "=== SQL Setup Scripts Execution Completed at $(date) ==="

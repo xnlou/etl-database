@@ -1,18 +1,21 @@
 import sys
 import os
-from pathlib import Path
-sys.path.append(str(Path.home() / 'client_etl_workflow'))
-import time
-import uuid
-import requests
 import psycopg2
-from systemscripts.db_config import DB_PARAMS
+
+# Add root directory to sys.path
+sys.path.append('/home/yostfundsadmin/client_etl_workflow')
 import pandas as pd
-from datetime import datetime
+import requests
+import uuid
+import time
+from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime
 from systemscripts.user_utils import get_username
 from systemscripts.log_utils import log_message
 from systemscripts.directory_management import FILE_WATCHER_DIR, LOG_DIR, ensure_directory_exists
+from systemscripts.db_config import DB_PARAMS
+import grp
 
 # Configuration
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
@@ -34,8 +37,7 @@ MAX_WORKERS = 1
 # Number of concurrent download threads in ThreadPoolExecutor.
 # Lower values (e.g., 1) reduce simultaneous requests, making the script more conservative.
 
-# Placeholder for download logic
-conn = psycopg2.connect(**DB_PARAMS)
+
 
 # Ensure directories exist
 ensure_directory_exists(FILE_WATCHER_DIR)
@@ -81,12 +83,9 @@ def fetch_url_data(log_file, run_uuid, user, script_start_time):
                 columns = ['EventID', 'IsDownloadable', 'DownloadLink', 'IsActive', 'MaxDatasetDate']
                 df = pd.DataFrame(rows, columns=columns)
                 
-                # Convert IsDownloadable to integer
                 df['IsDownloadable'] = df['IsDownloadable'].astype(int)
-                # Convert IsActive to integer (if needed for downstream processing)
                 df['IsActive'] = df['IsActive'].astype(int)
                 
-                # Log the fetched data details
                 log_message(log_file, "DataFetch", f"Fetched {len(df)} rows from database",
                             run_uuid=run_uuid, stepcounter="DataFetch_0", user=user, script_start_time=script_start_time)
                 if len(df) == 0:
@@ -136,6 +135,12 @@ def download_file(event_id, download_url, log_file, run_uuid, user, script_start
                 with open(output_file, "wb") as f:
                     f.write(response.content)
                 os.chmod(output_file, 0o660)
+                try:
+                    group_id = grp.getgrnam('etl_group').gr_gid
+                    os.chown(output_file, os.getuid(), group_id)
+                except KeyError:
+                    log_message(log_file, "Warning", f"Group 'etl_group' not found; skipping chown for {output_file}",
+                                run_uuid=run_uuid, stepcounter=f"download_{event_id}_chown", user=user, script_start_time=script_start_time)
                 log_message(log_file, "Download", f"Downloaded EventID {event_id} to {output_file}",
                             run_uuid=run_uuid, stepcounter=f"download_{event_id}", user=user, script_start_time=script_start_time)
                 result["Status"] = "Success"
@@ -203,6 +208,12 @@ def meetmax_url_download():
         results_df = pd.DataFrame(results)
         results_df.to_csv(results_file, index=False)
         os.chmod(results_file, 0o660)
+        try:
+            group_id = grp.getgrnam('etl_group').gr_gid
+            os.chown(results_file, os.getuid(), group_id)
+        except KeyError:
+            log_message(log_file, "Warning", f"Group 'etl_group' not found; skipping chown for {results_file}",
+                        run_uuid=run_uuid, stepcounter="FinalSave_chown", user=user, script_start_time=script_start_time)
         log_message(log_file, "FinalSave", f"Saved {len(results)} rows to {results_file}",
                     run_uuid=run_uuid, stepcounter="FinalSave_0", user=user, script_start_time=script_start_time)
     else:

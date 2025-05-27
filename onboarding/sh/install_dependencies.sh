@@ -4,8 +4,7 @@ set -e  # Exit immediately if a command exits with a non-zero status
 
 # Detect the user running the script
 CURRENT_USER=$(whoami)
-HOME_DIR="/home/$CURRENT_USER"
-PROJECT_DIR="$HOME_DIR/client_etl_workflow"
+PROJECT_DIR="/home/yostfundsadmin/client_etl_workflow"
 LOG_FILE="$PROJECT_DIR/logs/install_dependencies.log"
 
 # Function to log errors with timestamp and exit code
@@ -96,15 +95,16 @@ echo "Setting permissions for virtual environment..."
 sudo chown -R "$CURRENT_USER":etl_group "$PROJECT_DIR/venv" || log_error "Failed to change ownership of virtual environment"
 sudo chmod -R 2770 "$PROJECT_DIR/venv" && echo "Virtual environment permissions set." || log_error "Failed to set virtual environment permissions"
 
-# Configure cron permissions for yostfundsadmin
-echo "Configuring cron permissions for $CURRENT_USER..."
+# Configure cron permissions for yostfundsadmin and etl_user
+echo "Configuring cron permissions for $CURRENT_USER and etl_user..."
 # Create cron_etl group if it doesn't exist
 if ! getent group cron_etl >/dev/null; then
     sudo groupadd cron_etl || log_error "Failed to create cron_etl group"
 fi
 
-# Add yostfundsadmin to cron_etl group
+# Add yostfundsadmin and etl_user to cron_etl group
 sudo usermod -aG cron_etl "$CURRENT_USER" || log_error "Failed to add $CURRENT_USER to cron_etl group"
+sudo usermod -aG cron_etl "etl_user" || log_error "Failed to add etl_user to cron_etl group"
 
 # Change group ownership and permissions of /etc/cron.d/
 sudo chgrp cron_etl /etc/cron.d || log_error "Failed to change group ownership of /etc/cron.d to cron_etl"
@@ -116,8 +116,8 @@ if [ ! -f "$CRON_FILE" ]; then
     sudo touch "$CRON_FILE" || log_error "Failed to create $CRON_FILE"
 fi
 sudo chown root:cron_etl "$CRON_FILE" || log_error "Failed to set ownership of $CRON_FILE to root:cron_etl"
-sudo chmod 664 "$CRON_FILE" || log_error "Failed to set permissions on $CRON_FILE"
-echo "Cron permissions configured for $CURRENT_USER."
+sudo chmod 644 "$CRON_FILE" || log_error "Failed to set permissions on $CRON_FILE"
+echo "Cron permissions configured for $CURRENT_USER and etl_user."
 
 echo "=== Setup complete at $(date) ==="
 echo "Check $LOG_FILE for any issues."

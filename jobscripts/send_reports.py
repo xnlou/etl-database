@@ -16,10 +16,23 @@ import traceback
 from sqlalchemy import create_engine
 from sqlalchemy.sql import text
 from systemscripts.db_config import SQLALCHEMY_DATABASE_URL  # Import centralized DB config
+import grp
 
 # Generate log file name with timestamp suffix (yyyyMMddThhmmss)
 log_timestamp = datetime.now().strftime("%Y%m%dT%H%M%S")
 log_file = f"/home/yostfundsadmin/client_etl_workflow/logs/send_reports.log_{log_timestamp}"
+
+# Set permissions for log file
+try:
+    open(log_file, 'a').close()  # Create or touch the file
+    os.chmod(log_file, 0o660)
+    try:
+        group_id = grp.getgrnam('etl_group').gr_gid
+        os.chown(log_file, os.getuid(), group_id)
+    except KeyError:
+        print(f"Warning: Group 'etl_group' not found; skipping chown for {log_file}")
+except Exception as e:
+    print(f"Failed to set permissions for log file {log_file}: {e}")
 
 # Configure logging
 logging.basicConfig(filename=log_file, level=logging.INFO, 

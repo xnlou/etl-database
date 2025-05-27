@@ -5,19 +5,26 @@ import time
 import uuid
 from pathlib import Path
 from datetime import datetime
+import grp
 
 # Debug logging before imports
-debug_log_path = Path.home() / 'client_etl_workflow' / 'logs' / f"debug_run_import_job_{datetime.now().strftime('%Y%m%dT%H%M%S')}.log"
+debug_log_path = Path('/home/yostfundsadmin/client_etl_workflow/logs') / f"debug_run_import_job_{datetime.now().strftime('%Y%m%dT%H%M%S')}.log"
 try:
     with open(debug_log_path, 'w') as f:
         f.write(f"[{datetime.now()}] Script started\n")
         f.write(f"[{datetime.now()}] Current working directory: {os.getcwd()}\n")
         f.write(f"[{datetime.now()}] sys.path before append: {sys.path}\n")
+    os.chmod(debug_log_path, 0o660)
+    try:
+        group_id = grp.getgrnam('etl_group').gr_gid
+        os.chown(debug_log_path, os.getuid(), group_id)
+    except KeyError:
+        print(f"Warning: Group 'etl_group' not found; skipping chown for {debug_log_path}")
 except Exception as e:
     print(f"Failed to write debug log: {e}")
 
 # Add root directory to sys.path
-sys.path.append(str(Path(__file__).parent.parent))
+sys.path.append('/home/yostfundsadmin/client_etl_workflow')
 
 try:
     from systemscripts.user_utils import get_username
@@ -44,7 +51,7 @@ def run_import_job(config_id):
                 run_uuid=run_uuid, stepcounter="Initialization_0", user=user, script_start_time=script_start_time)
 
     # Path to generic_import.py
-    system_script = Path.home() / 'client_etl_workflow' / 'systemscripts' / 'generic_import.py'
+    system_script = Path('/home/yostfundsadmin/client_etl_workflow/systemscripts/generic_import.py')
 
     if not system_script.exists():
         log_message(log_file, "Error", f"System script {system_script} not found",
@@ -52,7 +59,7 @@ def run_import_job(config_id):
         return
 
     # Run the system script using the virtual environment
-    venv_python = Path.home() / 'client_etl_workflow' / 'venv' / 'bin' / 'python'
+    venv_python = Path('/home/yostfundsadmin/client_etl_workflow/venv/bin/python')
     cmd = [str(venv_python), str(system_script), str(config_id)]
 
     try:

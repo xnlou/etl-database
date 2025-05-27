@@ -19,62 +19,35 @@ ON CONFLICT (importstrategyid) DO NOTHING;
 -- Creating the timportconfig table in the dba schema to manage flat file imports
 CREATE TABLE IF NOT EXISTS dba."timportconfig" (
     config_id SERIAL PRIMARY KEY,
-    -- Unique identifier for each configuration
     config_name VARCHAR(100) NOT NULL UNIQUE,
-    -- Descriptive name for the configuration (e.g., 'MeetMaxURLCheckImport')
     datasource VARCHAR(100) NOT NULL,
-    -- Descriptive name of the data source (e.g., 'MeetMax')
     datasettype VARCHAR(100) NOT NULL,
-    -- Descriptive name of the dataset type (e.g., 'MetaData')
     source_directory VARCHAR(255) NOT NULL,
-    -- Directory where input files are located (e.g., '/home/yostfundsadmin/client_etl_workflow/file_watcher')
     archive_directory VARCHAR(255) NOT NULL,
-    -- Directory where files are moved after processing (e.g., '/home/yostfundsadmin/client_etl_workflow/archive/import_MeetMaxURLCheckImport')
     file_pattern VARCHAR(255) NOT NULL,
-    -- Pattern to match files (e.g., '*.csv', '*MeetMax*.xls', regex: '\d{8}T\d{6}_MeetMax.*\.csv')
     file_type VARCHAR(10) NOT NULL CHECK (file_type IN ('CSV', 'XLS', 'XLSX')),
-    -- Type of file to process (CSV, XLS, XLSX)
     metadata_label_source VARCHAR(50) NOT NULL CHECK (metadata_label_source IN ('filename', 'file_content', 'static')),
-    -- Source of metadata label (filename, specific column in file, or static user-defined value)
     metadata_label_location VARCHAR(255),
-    -- Location details for metadata extraction
-    -- For 'filename': position index (e.g., '0' for first part before delimiter)
-    -- For 'file_content': column name (e.g., 'EventName')
-    -- For 'static': user-defined value (e.g., 'MeetMaxURLCheck')
     dateconfig VARCHAR(50) NOT NULL CHECK (dateconfig IN ('filename', 'file_content', 'static')),
-    -- Source of date metadata (filename, specific column in file, or static date value)
     datelocation VARCHAR(255),
-    -- Location details for date extraction
-    -- For 'filename': position index (e.g., '0' for first part before delimiter)
-    -- For 'file_content': column name (e.g., 'EventDate')
-    -- For 'static': fixed date format defined by dateformat
     dateformat VARCHAR(50),
-    -- Format of the date (e.g., 'yyyyMMddTHHmmss' for '20250520T214109', 'yyyy-MM-dd' for '2025-05-16')
     delimiter VARCHAR(10),
-    -- Delimiter used for parsing filenames (e.g., '_'), NULL if not applicable
     target_table VARCHAR(100) NOT NULL,
-    -- Target database table for import (e.g., 'public.tmeetmaxurlcheck')
     importstrategyid INT NOT NULL DEFAULT 1,
-    -- Foreign key to importstrategy table, defining how to handle column mismatches
     is_active BIT(1) DEFAULT '1',
-    -- Flag to enable/disable the configuration (1 = active, 0 = inactive)
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    -- Timestamp when the configuration was created
     last_modified_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    -- Timestamp when the configuration was last modified
     CONSTRAINT fk_importstrategyid FOREIGN KEY (importstrategyid) REFERENCES dba.timportstrategy(importstrategyid),
     CONSTRAINT valid_directories CHECK (
         source_directory != archive_directory
         AND source_directory ~ '^/.*[^/]$'
         AND archive_directory ~ '^/.*[^/]$'
     ),
-    -- Ensure directories are valid absolute paths (no trailing slash) and distinct
     CONSTRAINT valid_date CHECK (
         (dateconfig = 'filename' AND datelocation ~ '^[0-9]+$' AND delimiter IS NOT NULL AND dateformat IS NOT NULL)
         OR (dateconfig = 'file_content' AND datelocation ~ '^[a-zA-Z0-9_]+$' AND dateformat IS NOT NULL)
         OR (dateconfig = 'static' AND dateformat IS NOT NULL)
     )
-    -- Ensure DateLocation and DateFormat are appropriate for the DateConfig
 );
 
 -- Adding a comment to describe the table
@@ -165,75 +138,6 @@ BEGIN
 END;
 $$;
 
--- Inserting configurations using the insert procedure
-DO $$
-BEGIN
-    -- Insert MeetMaxURLCheckImport configuration
-    IF NOT EXISTS (SELECT 1 FROM dba."timportconfig" WHERE config_name = 'MeetMaxURLCheckImport') THEN
-        CALL dba.pimportconfigi(
-            'MeetMaxURLCheckImport',
-            'MeetMax',
-            'MeetMaxURL',
-            '/home/yostfundsadmin/client_etl_workflow/file_watcher',
-            '/home/yostfundsadmin/client_etl_workflow/archive/import_MeetMaxURLCheckImport',
-            '\d{8}T\d{6}_MeetMaxURLCheck\.csv',
-            'CSV',
-            'static',
-            'MeetMaxURLCheck',
-            'filename',
-            '0',
-            'yyyyMMddTHHmmss',
-            '_',
-            'public.tmeetmaxurlcheck',
-            1,
-            '1'::BIT(1)
-        );
-    ELSE
-        -- Update existing configuration to match new settings
-        CALL dba.pimportconfigu(
-            1,
-            NULL,
-            NULL,
-            NULL,
-            NULL,
-            NULL,
-            NULL,
-            'static',
-            'MeetMaxURLCheck',
-            'filename',
-            '0',
-            'yyyyMMddTHHmmss',
-            '_',
-            NULL,
-            NULL,
-            NULL
-        );
-    END IF;
-
-    -- Insert MeetMax_Events_XLS_Import configuration
-    IF NOT EXISTS (SELECT 1 FROM dba."timportconfig" WHERE config_name = 'MeetMax_Events_XLS_Import') THEN
-        CALL dba.pimportconfigi(
-            'MeetMax_Events_XLS_Import',
-            'MeetMax',
-            'MeetMaxEvents',
-            '/home/yostfundsadmin/client_etl_workflow/file_watcher',
-            '/home/yostfundsadmin/client_etl_workflow/archive/meetmaxevents',
-            '^\d{8}T\d{6}_MeetMax_\d+\.xls$',
-            'XLS',
-            'filename',
-            '2',
-            'filename',
-            '0',
-            'yyyyMMddTHHmmss',
-            '_',
-            'public.tmeetmaxevent',
-            1,
-            '1'::BIT(1)
-        );
-    END IF;
-END;
-$$;
-
 -- Creating a stored procedure for updating an existing timportconfig row with partial updates
 CREATE OR REPLACE PROCEDURE dba.pimportconfigu(
     p_config_id INT,
@@ -284,6 +188,55 @@ BEGIN
 EXCEPTION
     WHEN OTHERS THEN
         RAISE EXCEPTION 'Error updating configuration: %', SQLERRM;
+END;
+$$;
+
+-- Insert configurations using the insert procedure
+DO $$
+BEGIN
+    -- Insert MeetMaxURLCheckImport configuration
+    IF NOT EXISTS (SELECT 1 FROM dba."timportconfig" WHERE config_name = 'MeetMaxURLCheckImport') THEN
+        CALL dba.pimportconfigi(
+            'MeetMaxURLCheckImport',
+            'MeetMax',
+            'MeetMaxURL',
+            '/home/yostfundsadmin/client_etl_workflow/file_watcher',
+            '/home/yostfundsadmin/client_etl_workflow/archive/import_MeetMaxURLCheckImport',
+            '\d{8}T\d{6}_MeetMaxURLCheck\.csv',
+            'CSV',
+            'static',
+            'MeetMaxURLCheck',
+            'filename',
+            '0',
+            'yyyyMMddTHHmmss',
+            '_',
+            'public.tmeetmaxurlcheck',
+            1,
+            '1'::BIT(1)
+        );
+    END IF;
+
+    -- Insert MeetMax_Events_XLS_Import configuration
+    IF NOT EXISTS (SELECT 1 FROM dba."timportconfig" WHERE config_name = 'MeetMax_Events_XLS_Import') THEN
+        CALL dba.pimportconfigi(
+            'MeetMax_Events_XLS_Import',
+            'MeetMax',
+            'MeetMaxEvents',
+            '/home/yostfundsadmin/client_etl_workflow/file_watcher',
+            '/home/yostfundsadmin/client_etl_workflow/archive/meetmaxevents',
+            '^\d{8}T\d{6}_MeetMax_\d+\.xls$',
+            'XLS',
+            'filename',
+            '2',
+            'filename',
+            '0',
+            'yyyyMMddTHHmmss',
+            '_',
+            'public.tmeetmaxevent',
+            1,
+            '1'::BIT(1)
+        );
+    END IF;
 END;
 $$;
 
