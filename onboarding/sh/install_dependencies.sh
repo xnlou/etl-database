@@ -115,7 +115,7 @@ CRON_FILE="/etc/cron.d/etl_jobs"
 if [ ! -f "$CRON_FILE" ]; then
     sudo touch "$CRON_FILE" || log_error "Failed to create $CRON_FILE"
 fi
-sudo chown "$CURRENT_USER":cron_etl "$CRON_FILE" || log_error "Failed to set ownership of $CRON_FILE"
+sudo chown root:cron_etl "$CRON_FILE" || log_error "Failed to set ownership of $CRON_FILE to root:cron_etl"
 sudo chmod 664 "$CRON_FILE" || log_error "Failed to set permissions on $CRON_FILE"
 echo "Cron permissions configured for $CURRENT_USER."
 

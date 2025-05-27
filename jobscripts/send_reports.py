@@ -1,6 +1,5 @@
 import sys
-from pathlib import Path
-sys.path.append(str(Path.home() / 'client_etl_workflow'))  # Add repository root to sys.path
+sys.path.append('/home/yostfundsadmin/client_etl_workflow')  # Add repository root to sys.path
 import pandas as pd
 import smtplib
 from email.mime.multipart import MIMEMultipart
@@ -13,6 +12,7 @@ import io
 import sys
 import logging
 import csv
+import traceback
 from sqlalchemy import create_engine
 from sqlalchemy.sql import text
 from systemscripts.db_config import SQLALCHEMY_DATABASE_URL  # Import centralized DB config
@@ -29,13 +29,17 @@ logging.basicConfig(filename=log_file, level=logging.INFO,
 engine = create_engine(SQLALCHEMY_DATABASE_URL)
 
 # Gmail credentials from environment variables
-GMAIL_USER = os.getenv("ETL_EMAIL")
-GMAIL_PASSWORD = os.getenv("ETL_EMAIL_PASSWORD")
+ETL_EMAIL = os.getenv("ETL_EMAIL")
+ETL_EMAIL_PASSWORD = os.getenv("ETL_EMAIL_PASSWORD")
+
+# Log the environment variables for debugging
+logging.info(f"ETL_EMAIL: {ETL_EMAIL}")
+logging.info(f"ETL_EMAIL_PASSWORD: {ETL_EMAIL_PASSWORD if ETL_EMAIL_PASSWORD else 'Not set'}")
 
 def send_email(recipients, subject, body, attachments=None):
     """Send an email via Gmail SMTP with optional attachments."""
     msg = MIMEMultipart()
-    msg['From'] = GMAIL_USER
+    msg['From'] = ETL_EMAIL
     msg['To'] = ", ".join(recipients)
     msg['Subject'] = subject
 
@@ -52,9 +56,15 @@ def send_email(recipients, subject, body, attachments=None):
             msg.attach(part)
 
     # Send email using Gmail SMTP (SSL/TLS)
-    with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
-        server.login(GMAIL_USER, GMAIL_PASSWORD)
-        server.sendmail(GMAIL_USER, recipients, msg.as_string())
+    try:
+        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
+            server.set_debuglevel(1)  # Enable debug output
+            logging.info(f"Attempting to login with ETL_EMAIL: {ETL_EMAIL}")
+            server.login(ETL_EMAIL, ETL_EMAIL_PASSWORD)
+            server.sendmail(ETL_EMAIL, recipients, msg.as_string())
+    except Exception as e:
+        logging.error(f"SMTP error: {str(e)}\n{traceback.format_exc()}")
+        raise
 
 def process_reports(report_id=None):
     """Fetch reports from dba.treportmanager and send emails."""
@@ -120,10 +130,12 @@ def process_reports(report_id=None):
                     send_email(recipients, subject, body, attachments)
                     logging.info(f"Sent report {reportname} (ID: {report_id}) to {toheader}")
                 except Exception as e:
-                    logging.error(f"Failed to send report {reportname} (ID: {report_id}): {str(e)}")
+                    logging.error(f"Failed to send report {reportname} (ID: {report_id}): {str(e)}\n{traceback.format_exc()}")
+                    raise
 
     except Exception as e:
-        logging.error(f"Error processing reports: {str(e)}")
+        logging.error(f"Error processing reports: {str(e)}\n{traceback.format_exc()}")
+        raise
 
 # Run the script
 if __name__ == "__main__":

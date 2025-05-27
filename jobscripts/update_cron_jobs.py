@@ -1,7 +1,7 @@
 import sys
-from pathlib import Path
-sys.path.append(str(Path.home() / 'client_etl_workflow'))  # Add repository root to sys.path
+sys.path.append('/home/yostfundsadmin/client_etl_workflow')  # Add repository root to sys.path
 import psycopg2
+import os
 from systemscripts.db_config import DB_PARAMS  # Import centralized DB config
 
 # Connect to PostgreSQL database
@@ -16,19 +16,23 @@ report_schedules = cur.fetchall()
 cur.execute("SELECT schedulerID, taskname, frequency, scriptpath, scriptargs FROM dba.tscheduler WHERE datastatusid = 1")
 task_schedules = cur.fetchall()
 
-# Generate cron file directly in /etc/cron.d/etl_jobs
+# Generate cron file in /etc/cron.d/etl_jobs (requires sudo)
 cron_file = "/etc/cron.d/etl_jobs"
 with open(cron_file, 'w') as f:
-    # Add cron jobs for reports
+    # Add environment sourcing and cron jobs for reports
     for report_id, frequency in report_schedules:
-        cron_line = f"{frequency} etl_user /usr/bin/python3 /home/yostfundsadmin/client_etl_workflow/jobscripts/send_reports.py {report_id} >> /home/yostfundsadmin/client_etl_workflow/logs/send_reports.log 2>&1\n"
+        cron_line = f"{frequency} yostfundsadmin /home/yostfundsadmin/client_etl_workflow/jobscripts/run_python_etl_script.sh send_reports.py {report_id} >> /home/yostfundsadmin/client_etl_workflow/logs/send_reports.log_\\$(date +\\%Y\\%m\\%dT\\%H\\%M\\%S) 2>&1\n"
         f.write(cron_line)
 
-    # Add cron jobs for other tasks
+    # Add environment sourcing and cron jobs for other tasks
     for scheduler_id, taskname, frequency, scriptpath, scriptargs in task_schedules:
         scriptargs = scriptargs if scriptargs else ""
-        cron_line = f"{frequency} etl_user /usr/bin/python3 {scriptpath} {scriptargs} >> /home/yostfundsadmin/client_etl_workflow/logs/{taskname}.log 2>&1\n"
+        script_name = os.path.basename(scriptpath)
+        cron_line = f"{frequency} yostfundsadmin /home/yostfundsadmin/client_etl_workflow/jobscripts/run_python_etl_script.sh {script_name} {scriptargs} >> /home/yostfundsadmin/client_etl_workflow/logs/{taskname}.log_\\$(date +\\%Y\\%m\\%dT\\%H\\%M\\%S) 2>&1\n"
         f.write(cron_line)
+
+# Set permissions on the cron file
+os.chmod(cron_file, 0o644)
 
 cur.close()
 conn.close()
