@@ -69,7 +69,7 @@ BEGIN
             p_attachmentqueries JSONB,
             p_emailbodytemplate TEXT,
             p_emailbodyqueries JSONB,
-            p_datastatus VARCHAR,
+            p_datastatus int,
             p_createduser VARCHAR
         ) RETURNS INT
         LANGUAGE plpgsql
@@ -81,7 +81,7 @@ BEGIN
             -- Resolve datastatusid
             SELECT datastatusid INTO v_datastatusid 
             FROM dba.tdatastatus 
-            WHERE statusname = p_datastatus;
+            WHERE datastatusid = p_datastatus;
             IF v_datastatusid IS NULL THEN
                 RAISE EXCEPTION 'Data status % not found', p_datastatus;
             END IF;
@@ -128,91 +128,7 @@ END $OUTER$;
 DO $OUTER$
 BEGIN
     RAISE NOTICE 'Granting permissions on f_insert_treportmanager';
-    GRANT EXECUTE ON FUNCTION dba.f_insert_treportmanager(VARCHAR, TEXT, VARCHAR, VARCHAR, TEXT, BOOLEAN, JSONB, TEXT, JSONB, VARCHAR, VARCHAR) TO etl_user;
-    RAISE NOTICE 'Permissions granted on f_insert_treportmanager';
-END $OUTER$;
-
-
---insert
-DO $OUTER$
-BEGIN
-    RAISE NOTICE 'Creating function f_insert_treportmanager';
-    IF NOT EXISTS (
-        SELECT 1
-        FROM pg_proc
-        WHERE pronamespace = (SELECT oid FROM pg_namespace WHERE nspname = 'dba')
-        AND proname = 'f_insert_treportmanager'
-    ) THEN
-        CREATE OR REPLACE FUNCTION dba.f_insert_treportmanager(
-            p_reportname VARCHAR,
-            p_reportdescription TEXT,
-            p_frequency VARCHAR,
-            p_subjectheader VARCHAR,
-            p_toheader TEXT,
-            p_hasattachment BOOLEAN,
-            p_attachmentqueries JSONB,
-            p_emailbodytemplate TEXT,
-            p_emailbodyqueries JSONB,
-            p_datastatusid INT, -- Changed to INT
-            p_createduser VARCHAR
-        ) RETURNS INT
-        LANGUAGE plpgsql
-        AS $INNER$
-        DECLARE
-            v_reportid INT;
-        BEGIN
-            -- Validate datastatusid exists in dba.tdatastatus
-            IF NOT EXISTS (
-                SELECT 1
-                FROM dba.tdatastatus
-                WHERE datastatusid = p_datastatusid
-            ) THEN
-                RAISE EXCEPTION 'Data status ID % not found in dba.tdatastatus', p_datastatusid;
-            END IF;
-
-            -- Insert new report configuration
-            INSERT INTO dba.treportmanager (
-                reportname,
-                reportdescription,
-                frequency,
-                Subjectheader,
-                toheader,
-                hasattachment,
-                attachmentqueries,
-                emailbodytemplate,
-                emailbodyqueries,
-                datastatusid,
-                createddate,
-                createduser
-            ) VALUES (
-                p_reportname,
-                p_reportdescription,
-                p_frequency,
-                p_subjectheader,
-                p_toheader,
-                p_hasattachment,
-                p_attachmentqueries,
-                p_emailbodytemplate,
-                p_emailbodyqueries,
-                p_datastatusid,
-                CURRENT_TIMESTAMP,
-                p_createduser
-            ) RETURNING reportID INTO v_reportid;
-
-            RETURN v_reportid;
-        END;
-        $INNER$;
-
-        COMMENT ON FUNCTION dba.f_insert_treportmanager IS 'Inserts a new report configuration into dba.treportmanager and returns the reportID.';
-        RAISE NOTICE 'Created function f_insert_treportmanager';
-    END IF;
-END $OUTER$;
-
--- Grant permissions on the function
-DO $OUTER$
-BEGIN
-    RAISE NOTICE 'Granting permissions on f_insert_treportmanager';
-    GRANT EXECUTE ON FUNCTION dba.f_insert_treportmanager(VARCHAR, TEXT, VARCHAR, VARCHAR, TEXT, BOOLEAN, JSONB, TEXT, JSONB, INT, VARCHAR) TO etl_user;
+    GRANT EXECUTE ON FUNCTION dba.f_insert_treportmanager(VARCHAR, TEXT, VARCHAR, VARCHAR, TEXT, BOOLEAN, JSONB, TEXT, JSONB, int, VARCHAR) TO etl_user;
     RAISE NOTICE 'Permissions granted on f_insert_treportmanager';
 END $OUTER$;
 

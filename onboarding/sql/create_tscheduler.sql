@@ -7,8 +7,8 @@ CREATE TABLE dba.tscheduler (
     scriptargs TEXT, -- Optional arguments for the script (e.g., "arg1 arg2")
     datastatusid INT REFERENCES dba.tdatastatus(datastatusid),
     createddate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    createduser VARCHAR(100),
-    CONSTRAINT uk_taskname UNIQUE (taskname)
+    createduser VARCHAR(100)
+    
 );
 
 -- Add comments for clarity

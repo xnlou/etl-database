@@ -26,7 +26,12 @@ SQL_SCRIPTS=(
     "table_index_monitoring.sql"
     "monitor_long_running_queries.sql"
     "create_importconfig_table.sql"
+    "create_treportmanager.sql"      # Table for report manager
+    #"create_tscheduler.sql"          # Table for scheduler
+    "create_f_get_event_changes.sql" # Function for event changes
+    "create_tscheduler_procedures.sql" # Procedures for scheduler
 )
+
 
 # Ensure log directory exists
 mkdir -p "$LOG_DIR"

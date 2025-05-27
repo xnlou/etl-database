@@ -78,10 +78,11 @@ echo "Permissions of $SCRIPT_PATH: $(ls -l $SCRIPT_PATH)"
 # Log Python binary permissions
 echo "Permissions of $PYTHON: $(ls -l $PYTHON)"
 
-# Check if Python binary is executable
-if [ ! -x "$PYTHON" ]; then
-    echo "Error: Python binary $PYTHON not found or not executable" >&2
-    exit 1
+PYTHON_BINARY="$VENV_DIR/bin/python"
+PYTHON_TARGET="$(readlink -f "$PYTHON_BINARY")"
+if [ ! -f "$PYTHON_BINARY" ] || [ ! -x "$PYTHON_TARGET" ]; then
+  echo "Error: Python binary $PYTHON_BINARY or its target $PYTHON_TARGET not found or not executable"
+  exit 1
 fi
 
 # Log environment variables
