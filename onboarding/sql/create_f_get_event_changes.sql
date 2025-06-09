@@ -1,26 +1,27 @@
-CREATE OR REPLACE FUNCTION dba.f_get_event_changes(p_fulldate DATE DEFAULT NULL)
-RETURNS TABLE (
-    eventid VARCHAR,
-    company_name TEXT,
-    ticker TEXT,
-    mindate DATE,
-    maxdate DATE,
-    url TEXT,
-    scenario TEXT
-)
-LANGUAGE SQL
+-- DROP FUNCTION dba.f_get_event_changes(date);
+
+CREATE OR REPLACE FUNCTION dba.f_get_event_changes(p_fulldate date DEFAULT NULL::date)
+ RETURNS TABLE(
+    eventid character varying,
+    company_name text,
+    ticker text,
+    mindate date,
+    maxdate date,
+    url text,
+    scenario text)
+ LANGUAGE sql
 AS $$
 WITH DateRange AS (
     SELECT 
         c1.fulldate AS periodenddate,
         (SELECT MAX(c2.fulldate)
          FROM dba.tcalendardays c2
-         WHERE c2.fulldate <= (c1.fulldate - INTERVAL '45 days')
+         WHERE c2.fulldate <= (c1.fulldate - INTERVAL '1 days')
          AND c2.isbusday = TRUE
          AND c2.isholiday = FALSE
         ) AS periodstartdate
     FROM dba.tcalendardays c1
-    WHERE c1.fulldate = COALESCE(p_fulldate, CURRENT_DATE)
+    WHERE c1.fulldate = COALESCE(p_fulldate, CURRENT_DATE)  -- Use p_fulldate if provided, otherwise CURRENT_DATE
 ),
 EventsDataSets AS (
     SELECT 
