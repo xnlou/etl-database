@@ -20,7 +20,7 @@ if [ ! -d "$LOG_DIR" ]; then
 fi
 
 # Find and delete log files older than 14 days
-find "$LOG_DIR" -type f -mtime +7 -exec rm -v {} \; >> "$LOG_FILE" 2>&1
+find "$LOG_DIR" -type f -mtime +14 -exec rm -v {} \; >> "$LOG_FILE" 2>&1
 
 # Log completion
 if [ $? -eq 0 ]; then
