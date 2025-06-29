@@ -36,12 +36,16 @@ rm -f packages.microsoft.gpg
 sudo apt update && echo "VS Code repository updated." || log_error "Failed to update VS Code repository"
 sudo apt install -y code && echo "VS Code installed." || log_error "Failed to install Visual Studio Code"
 
-# Install AnyDesk
-echo "Installing AnyDesk..."
-wget -qO - https://keys.anydesk.com/repos/DEB-GPG-KEY | sudo apt-key add - || log_error "Failed to add AnyDesk GPG key"
-echo "deb http://deb.anydesk.com/ all main" | sudo tee /etc/apt/sources.list.d/anydesk-stable.list
-sudo apt update || log_error "Failed to update AnyDesk repository"
-sudo apt install -y anydesk || log_error "Failed to install AnyDesk"
+# Install RustDesk
+echo "Installing RustDesk..."
+if ! dpkg -l | grep -q rustdesk; then
+    wget https://github.com/rustdesk/rustdesk/releases/download/1.4.0/rustdesk-1.4.0-x86_64.deb -O /tmp/rustdesk.deb || log_error "Failed to download RustDesk package"
+    sudo apt install -y /tmp/rustdesk.deb || log_error "Failed to install RustDesk"
+    rm /tmp/rustdesk.deb
+    echo "RustDesk installed."
+else
+    echo "RustDesk already installed."
+fi
 
 # Install Brave Browser
 echo "Installing Brave Browser..."
