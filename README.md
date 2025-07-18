@@ -84,6 +84,7 @@ Run the following scripts in order to set up the ETL pipeline. Each script logs 
 *   `README.md`: Provides an overview of the project.
 
 ### jobscripts/
+*   `daily_backup.sh`: A bash script to perform daily backups of the PostgreSQL database.
 *   `meetmax_url_check.py`: Scrapes MeetMax event URLs to check for valid events and downloadable files.
 *   `meetmax_url_download.py`: Downloads XLS files from URLs identified by the URL checker.
 *   `process_inbox.py`: Processes emails from a Gmail inbox based on specified configurations.
