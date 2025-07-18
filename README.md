@@ -4,13 +4,14 @@
 The **Client ETL Workflow Project** establishes an automated Extract, Transform, Load (ETL) pipeline on a Linux Mint Desktop, designed for managing client data workflows in a homelab environment. The pipeline automates data ingestion, processing, and reporting, ensuring secure and efficient handling of client data. Key functionalities include:
 
 - **Web Scraping**: Extracts data from static websites (e.g., MeetMax event pages) using Python scripts like `meetmax_url_check.py`.
+- **Gmail Inbox Processing**: Monitors a Gmail account for incoming emails that match database-defined criteria, downloads their content and attachments, and organizes them for further processing.
 - **File Conversion**: Converts client XLS/XLSX files to CSV using `xls_to_csv.py` with `openpyxl` and `xlrd`.
 - **Data Processing and Loading**: Transforms data using `pandas` and loads it into a PostgreSQL database via `generic_import.py` with `psycopg2`.
-- **Email Reporting**: Supports automated email notifications for job status or data summaries using `smtplib` (to be implemented).
+- **Email Reporting**: Supports automated email notifications for job status or data summaries using `smtplib`.
 - **Secure File Exchange**: Facilitates client file sharing via SFTP or cloud-based solutions, with strong authentication and encryption.
 
 ### Project Goals
-- **Automation**: Executes weekly ETL runs with minimal maintenance using Bash and Python scripts, scheduled via cron.
+- **Automation**: Executes daily and weekly ETL runs with minimal maintenance using Bash and Python scripts, scheduled via cron.
 - **Security**: Implements SSL/TLS for database and email interactions, uses strong authentication, and secures file permissions.
 - **Scalability**: Handles light data volumes (~1–10 MB/run) with flexibility for moderate growth.
 - **Traceability**: Logs all operations to CSV, TXT, and PostgreSQL for debugging and monitoring.
@@ -27,6 +28,7 @@ The ETL pipeline operates as a series of modular scripts coordinated within a st
 2. **Data Extraction**:
    - `meetmax_url_check.py`: Scrapes MeetMax event pages to identify valid URLs and downloadable XLS files, saving results to CSV and PostgreSQL (`public.tmeetmaxurlcheck`).
    - `meetmax_url_download.py`: Downloads XLS files from identified URLs, storing them in `file_watcher/` for further processing.
+   - `gmail_inbox_processor.py`: Monitors a configured Gmail inbox. When an email matches rules in `dba.tinboxconfig` (e.g., specific subject, has attachment), it downloads the raw email and its attachments to a local directory. It then moves the email to a "Processed" or "ErrorFolder" label in Gmail.
 
 3. **Data Transformation**:
    - `xls_to_csv.py`: Converts downloaded XLS/XLSX files to CSV, handling both modern (`openpyxl`) and legacy (`xlrd`) formats.
@@ -89,6 +91,7 @@ Run the following scripts in order to set up the ETL pipeline. Each script logs 
 *   `meetmax_url_download.py`: Downloads XLS files from URLs identified by the URL checker.
 *   `process_inbox.py`: Processes emails from a Gmail inbox based on specified configurations.
 *   `run_download_and_import.sh`: A shell script that runs the download and import jobs in sequence.
+*   `run_gmail_inbox_processor.py`: Wrapper to run Gmail inbox processing for a specific `config_id`.
 *   `run_import_job.py`: A wrapper script to run the generic import process for a specific configuration.
 *   `run_python_etl_script.sh`: A generic wrapper script to execute Python ETL scripts within the virtual environment.
 *   `send_reports.py`: Sends email reports based on configurations in the `dba.treportmanager` table.
@@ -108,7 +111,7 @@ Run the following scripts in order to set up the ETL pipeline. Each script logs 
 ### onboarding/sql/
 *   `create_f_get_event_changes.sql`: Creates a SQL function to get event changes.
 *   `create_importconfig_table.sql`: Creates the `timportconfig` table and related procedures.
-*   `create_inboxconfig_table.sql`: Creates the `tinboxconfig` table for Gmail inbox processing.
+*   `create_inboxconfig_table.sql`: Creates and populates the `dba.tinboxconfig` table to configure Gmail inbox processing rules.
 *   `create_treportmanager.sql`: Creates the `treportmanager` table for managing email reports.
 *   `create_tscheduler_procedures.sql`: Creates stored procedures for the task scheduler.
 *   `create_tscheduler.sql`: Creates the `tscheduler` table for scheduling tasks.
@@ -126,6 +129,7 @@ Run the following scripts in order to set up the ETL pipeline. Each script logs 
 *   `db_config.py`: Contains database connection parameters.
 *   `directory_management.py`: Manages the creation and initialization of directories.
 *   `generic_import.py`: A generic script to import data from files into the database.
+*   `gmail_inbox_processor.py`: Processes Gmail emails based on database configurations, downloading matching emails and attachments.
 *   `log_utils.py`: Provides utility functions for logging.
 *   `periodic_utils.py`: A utility for running tasks periodically.
 *   `user_utils.py`: A utility to get the current username.
