@@ -131,3 +131,75 @@ Run the following scripts in order to set up the ETL pipeline. Each script logs 
 *   `user_utils.py`: A utility to get the current username.
 *   `web_utils.py`: Provides utility functions for fetching URLs.
 *   `xls_to_csv.py`: Converts XLS/XLSX files to CSV format.
+
+## Cron Job Automation
+
+The ETL pipeline relies on cron, a time-based job scheduler in Unix-like operating systems, to automate its various tasks.
+
+### How to Interpret a Cron Job
+
+A cron job is defined by a line in a crontab file. Each line consists of a schedule followed by the command to execute.
+
+```
+* * * * *  user  command_to_execute
+- - - - -
+| | | | |
+| | | | +----- day of week (0 - 7) (Sunday is both 0 and 7)
+| | | +------- month (1 - 12)
+| | +--------- day of month (1 - 31)
+| +----------- hour (0 - 23)
++------------- minute (0 - 59)
+```
+
+-   `*`: Represents "every". For example, `*` in the hour field means "every hour".
+-   `,`: Specifies a list of values. For example, `5,17` in the hour field means "at 5 AM and 5 PM".
+-   `-`: Specifies a range of values. For example, `1-5` in the day of week field means "from Monday to Friday".
+
+### Summary of Scheduled Jobs
+
+The following jobs are configured in `/etc/cron.d/etl_jobs`:
+
+*   **MeetMax Download and Import**:
+    *   **Schedule**: `0 5,17 * * 1-5` (At 5:00 AM and 5:00 PM, Monday to Friday).
+    *   **Action**: Runs `run_download_and_import.sh` to download the latest MeetMax files and import them into the database.
+
+*   **Send Report #1**:
+    *   **Schedule**: `20 11 * * 1-5` (At 11:20 AM, Monday to Friday).
+    *   **Action**: Executes `send_reports.py` for the report with `reportID = 1`.
+
+*   **Send Report #2**:
+    *   **Schedule**: `25 11 * * 1-5` (At 11:25 AM, Monday to Friday).
+    *   **Action**: Executes `send_reports.py` for the report with `reportID = 2`.
+
+*   **MeetMax URL Check**:
+    *   **Schedule**: `0 19 * * 5` (At 7:00 PM on Friday).
+    *   **Action**: Runs `meetmax_url_check.py` to scan for new and updated MeetMax event URLs.
+
+*   **Weekly Cleanup**:
+    *   **Schedule**: `0 2 * * 0` (At 2:00 AM on Sunday).
+    *   **Action**: Runs `weekly_cleanup_meetmaxevents.sh` and `weekly_cleanup_logs.sh` to remove old archived files and logs.
+
+*   **Daily Database Backup**:
+    *   **Schedule**: `0 3 * * *` (At 3:00 AM every day).
+    *   **Action**: Runs `pg_backup_all.sh` to perform a full backup of all PostgreSQL databases.
+
+### How to Edit Cron Jobs
+
+There are two primary ways to manage the cron jobs for this project:
+
+1.  **Manual Editing (for system administrators)**:
+    The cron jobs are defined in a system-wide crontab file located at `/etc/cron.d/etl_jobs`. To edit this file directly, use a text editor with root privileges:
+    ```bash
+    sudo nano /etc/cron.d/etl_jobs
+    ```
+    After saving the file, the cron daemon will automatically apply the changes. No service restart is needed.
+
+2.  **Automated Updates via Database (Recommended)**:
+    The project is designed to manage schedules dynamically. The `update_cron_jobs.py` script reads schedule configurations from the `dba.tscheduler` and `dba.treportmanager` tables in the database and automatically generates the `/etc/cron.d/etl_jobs` file.
+
+    To add or modify a job, you should update the corresponding entry in the database tables. Then, you can run the update script manually to apply the changes:
+    ```bash
+    # This command must be run with sufficient privileges to write to /etc/cron.d/
+    sudo /bin/bash /home/yostfundsadmin/client_etl_workflow/jobscripts/run_python_etl_script.sh update_cron_jobs.py
+    ```
+    This approach is safer and ensures that the cron configuration stays in sync with the application's database.
