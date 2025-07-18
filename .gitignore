@@ -10,6 +10,7 @@ file_watcher/test/*.xls
 file_watcher/test/*.csv
 file_watcher/file_watcher_temp/*.csv
 file_watcher/file_watcher_temp/*.xls
+backups/*.gz
 systemscripts/*.pyc
 systemscripts/__pycache__/
 archive/
