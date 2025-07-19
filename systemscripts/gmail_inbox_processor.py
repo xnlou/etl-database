@@ -108,10 +108,14 @@ def process_email(service, msg_id, config, processed_label_id, log_file, run_uui
     # Download raw email as .eml
     raw_msg = service.users().messages().get(userId='me', id=msg_id, format='raw').execute()
     raw_bytes = base64.urlsafe_b64decode(raw_msg['raw'])
-    timestamp = datetime.now().strftime("%Y%m%dT%H%M%S")
-    email_dir = Path(config['local_path']) / f"{timestamp}_{msg_id}"
-    ensure_directory_exists(email_dir)
-    eml_path = email_dir / f"{msg_id}.eml"
+
+    # Define the base directory for saving files, without creating a subdirectory
+    save_dir = Path(config['local_path'])
+    ensure_directory_exists(save_dir)
+
+    # Save the .eml file directly in the save_dir, named by its unique message ID
+    eml_filename = f"{msg_id}.eml"
+    eml_path = save_dir / eml_filename
     with open(eml_path, 'wb') as f:
         f.write(raw_bytes)
     os.chmod(eml_path, 0o660)
@@ -120,8 +124,8 @@ def process_email(service, msg_id, config, processed_label_id, log_file, run_uui
     if 'parts' in message['payload']:
         for part in message['payload']['parts']:
             if part.get('filename'):
-                filename = part['filename']
-                if not config['attachment_pattern'] or re.search(config['attachment_pattern'], filename, re.IGNORECASE):
+                original_filename = part['filename']
+                if not config['attachment_pattern'] or re.search(config['attachment_pattern'], original_filename, re.IGNORECASE):
                     if 'data' in part['body']:
                         data = part['body']['data']
                     else:
@@ -130,14 +134,16 @@ def process_email(service, msg_id, config, processed_label_id, log_file, run_uui
                         data = att['data']
                     
                     file_bytes = base64.urlsafe_b64decode(data)
-                    att_path = email_dir / filename
+                    
+                    # Use the original filename for the attachment
+                    att_path = save_dir / original_filename
                     with open(att_path, 'wb') as f:
                         f.write(file_bytes)
                     os.chmod(att_path, 0o660)
 
     # Move to Processed
     service.users().messages().modify(userId='me', id=msg_id, body={'removeLabelIds': ['INBOX'], 'addLabelIds': [processed_label_id]}).execute()
-    log_message(log_file, "Process", f"Processed email {msg_id}: Saved to {email_dir}", run_uuid=run_uuid, stepcounter=f"Email_{msg_id}", user=user, script_start_time=script_start_time)
+    log_message(log_file, "Process", f"Processed email {msg_id}: Saved to {save_dir}", run_uuid=run_uuid, stepcounter=f"Email_{msg_id}", user=user, script_start_time=script_start_time)
 
 def gmail_inbox_processor():
     script_start_time = time.time()
