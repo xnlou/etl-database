@@ -105,13 +105,18 @@ def email_matches_config(message, config):
 def process_email(service, msg_id, config, processed_label_id, log_file, run_uuid, user, script_start_time):
     message = service.users().messages().get(userId='me', id=msg_id, format='full').execute()
     
+    # Get sent date from headers (fallback to today if missing/invalid)
+    sent_date_str = next((header['value'] for header in message['payload']['headers'] if header['name'].lower() == 'date'), None)
+    try:
+        sent_date = datetime.strptime(sent_date_str, '%a, %d %b %Y %H:%M:%S %z') if sent_date_str else datetime.now()
+        date_str = sent_date.strftime("%Y%m%d")
+    except ValueError:
+        date_str = datetime.now().strftime("%Y%m%d")
+    
     # Download raw email as .eml
     raw_msg = service.users().messages().get(userId='me', id=msg_id, format='raw').execute()
     raw_bytes = base64.urlsafe_b64decode(raw_msg['raw'])
-    timestamp = datetime.now().strftime("%Y%m%dT%H%M%S")
-    email_dir = Path(config['local_path']) / f"{timestamp}_{msg_id}"
-    ensure_directory_exists(email_dir)
-    eml_path = email_dir / f"{msg_id}.eml"
+    eml_path = Path(config['local_path']) / f"{date_str}_{msg_id}.eml"
     with open(eml_path, 'wb') as f:
         f.write(raw_bytes)
     os.chmod(eml_path, 0o660)
@@ -130,14 +135,14 @@ def process_email(service, msg_id, config, processed_label_id, log_file, run_uui
                         data = att['data']
                     
                     file_bytes = base64.urlsafe_b64decode(data)
-                    att_path = email_dir / filename
+                    att_path = Path(config['local_path']) / f"{date_str}_{filename}"
                     with open(att_path, 'wb') as f:
                         f.write(file_bytes)
                     os.chmod(att_path, 0o660)
 
     # Move to Processed
     service.users().messages().modify(userId='me', id=msg_id, body={'removeLabelIds': ['INBOX'], 'addLabelIds': [processed_label_id]}).execute()
-    log_message(log_file, "Process", f"Processed email {msg_id}: Saved to {email_dir}", run_uuid=run_uuid, stepcounter=f"Email_{msg_id}", user=user, script_start_time=script_start_time)
+    log_message(log_file, "Process", f"Processed email {msg_id}: Saved .eml and attachments to {config['local_path']}", run_uuid=run_uuid, stepcounter=f"Email_{msg_id}", user=user, script_start_time=script_start_time)
 
 def gmail_inbox_processor():
     script_start_time = time.time()
