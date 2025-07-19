@@ -19,7 +19,7 @@ from systemscripts.directory_management import ensure_directory_exists
 from systemscripts.user_utils import get_username
 
 # Constants
-SCOPES = ['https://www.googleapis.com/auth/gmail.modify']
+SCOPES = ['https://mail.google.com/']  # Full access (includes modify/labels)
 CREDENTIALS_FILE = Path(__file__).parent / 'credentials.json'
 TOKEN_FILE = Path(__file__).parent / 'token.json'
 PROCESSED_LABEL = 'Processed'
@@ -109,14 +109,9 @@ def process_email(service, msg_id, config, processed_label_id, log_file, run_uui
     raw_msg = service.users().messages().get(userId='me', id=msg_id, format='raw').execute()
     raw_bytes = base64.urlsafe_b64decode(raw_msg['raw'])
     timestamp = datetime.now().strftime("%Y%m%dT%H%M%S")
-
-    # Define the base directory for saving files, without creating a subdirectory
-    save_dir = Path(config['local_path'])
-    ensure_directory_exists(save_dir)
-
-    # Save the .eml file directly in the save_dir, named with msg_id and timestamp
-    eml_filename = f"{msg_id}_{timestamp}.eml"
-    eml_path = save_dir / eml_filename
+    email_dir = Path(config['local_path']) / f"{timestamp}_{msg_id}"
+    ensure_directory_exists(email_dir)
+    eml_path = email_dir / f"{msg_id}.eml"
     with open(eml_path, 'wb') as f:
         f.write(raw_bytes)
     os.chmod(eml_path, 0o660)
@@ -125,8 +120,8 @@ def process_email(service, msg_id, config, processed_label_id, log_file, run_uui
     if 'parts' in message['payload']:
         for part in message['payload']['parts']:
             if part.get('filename'):
-                original_filename = part['filename']
-                if not config['attachment_pattern'] or re.search(config['attachment_pattern'], original_filename, re.IGNORECASE):
+                filename = part['filename']
+                if not config['attachment_pattern'] or re.search(config['attachment_pattern'], filename, re.IGNORECASE):
                     if 'data' in part['body']:
                         data = part['body']['data']
                     else:
@@ -135,18 +130,14 @@ def process_email(service, msg_id, config, processed_label_id, log_file, run_uui
                         data = att['data']
                     
                     file_bytes = base64.urlsafe_b64decode(data)
-                    
-                    # Append timestamp to the original filename before the extension
-                    base, ext = os.path.splitext(original_filename)
-                    new_filename = f"{base}_{timestamp}{ext}"
-                    att_path = save_dir / new_filename
+                    att_path = email_dir / filename
                     with open(att_path, 'wb') as f:
                         f.write(file_bytes)
                     os.chmod(att_path, 0o660)
 
     # Move to Processed
     service.users().messages().modify(userId='me', id=msg_id, body={'removeLabelIds': ['INBOX'], 'addLabelIds': [processed_label_id]}).execute()
-    log_message(log_file, "Process", f"Processed email {msg_id}: Saved to {save_dir}", run_uuid=run_uuid, stepcounter=f"Email_{msg_id}", user=user, script_start_time=script_start_time)
+    log_message(log_file, "Process", f"Processed email {msg_id}: Saved to {email_dir}", run_uuid=run_uuid, stepcounter=f"Email_{msg_id}", user=user, script_start_time=script_start_time)
 
 def gmail_inbox_processor():
     script_start_time = time.time()
