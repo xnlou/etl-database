@@ -1,81 +1,161 @@
 # Client ETL Workflow Project
 
 ## Project Overview
-The **Client ETL Workflow Project** establishes an automated Extract, Transform, Load (ETL) pipeline on a Linux Mint Desktop, designed for managing client data workflows in a homelab environment. The pipeline automates data ingestion, processing, and reporting, ensuring secure and efficient handling of client data. Key functionalities include:
+The **Client ETL Workflow Project** establishes an automated Extract, Transform, Load (ETL) pipeline on a Linux Mint Desktop. Designed for a homelab environment, the pipeline automates data ingestion from web scraping and email attachments, processes the data, loads it into a PostgreSQL database, and sends out reports.
 
-- **Web Scraping**: Extracts data from static websites (e.g., MeetMax event pages) using Python scripts like `meetmax_url_check.py`.
-- **Gmail Inbox Processing**: Monitors a Gmail account for incoming emails that match database-defined criteria, downloads their content and attachments, and organizes them for further processing.
-- **File Conversion**: Converts client XLS/XLSX files to CSV using `xls_to_csv.py` with `openpyxl` and `xlrd`.
-- **Data Processing and Loading**: Transforms data using `pandas` and loads it into a PostgreSQL database via `generic_import.py` with `psycopg2`.
-- **Email Reporting**: Supports automated email notifications for job status or data summaries using `smtplib`.
-- **Secure File Exchange**: Facilitates client file sharing via SFTP or cloud-based solutions, with strong authentication and encryption.
+The entire workflow is designed to be highly modular and configurable directly from the database, minimizing the need for code changes for routine operational adjustments.
 
-### Project Goals
-- **Automation**: Executes daily and weekly ETL runs with minimal maintenance using Bash and Python scripts, scheduled via cron.
-- **Security**: Implements SSL/TLS for database and email interactions, uses strong authentication, and secures file permissions.
-- **Scalability**: Handles light data volumes (~1–10 MB/run) with flexibility for moderate growth.
-- **Traceability**: Logs all operations to CSV, TXT, and PostgreSQL for debugging and monitoring.
-- **Maintainability**: Uses open-source tools and a modular structure for easy updates and extensions.
+### Key Functionalities
+- **Multiple Data Sources**: Ingests data from web scraping (e.g., MeetMax) and by processing email attachments from a Gmail inbox using the Gmail API with OAuth2.
+- **Database-Driven Configuration**: All major processes
 
-## How It Works
-The ETL pipeline operates as a series of modular scripts coordinated within a structured directory environment:
 
-1. **Setup and Configuration**:
-   - `configure_etl_user.sh`: Creates an `etl_user` and `etl_group`, sets up directories (`/home/$USER/client_etl_workflow`), and configures cron for scheduling.
-   - `install_dependencies.sh`: Installs PostgreSQL, Python 3.12, Git, DBeaver, and Python dependencies (`pandas`, `scrapy`, `openpyxl`, etc.) in a virtual environment.
-   - `directory_management.py`: Ensures consistent directory structure for logs, file processing, and scripts.
 
-2. **Data Extraction**:
-   - `meetmax_url_check.py`: Scrapes MeetMax event pages to identify valid URLs and downloadable XLS files, saving results to CSV and PostgreSQL (`public.tmeetmaxurlcheck`).
-   - `meetmax_url_download.py`: Downloads XLS files from identified URLs, storing them in `file_watcher/` for further processing.
-   - `gmail_inbox_processor.py`: Monitors a configured Gmail inbox. When an email matches rules in `dba.tinboxconfig` (e.g., specific subject, has attachment), it downloads the raw email and its attachments to a local directory. It then moves the email to a "Processed" or "ErrorFolder" label in Gmail.
+email processing, file import, and report generation
 
-3. **Data Transformation**:
-   - `xls_to_csv.py`: Converts downloaded XLS/XLSX files to CSV, handling both modern (`openpyxl`) and legacy (`xlrd`) formats.
-   - `generic_import.py`: Reads CSV files, applies transformations based on configurations in `dba.timportconfig`, and prepares data for database loading.
+are controlled by configuration tables in a PostgreSQL database.
+- **Automated Processing**: Converts various file formats (XLS/XLSX to CSV), transforms data using pandas, and loads it into the database.
+- **Scheduled Operations**: Uses cron for scheduling all automated tasks, with the cron configuration itself being dynamically generated from the database.
+- **Secure and Robust**: Implements secure authentication for Gmail (OAuth2), enforces strict file permissions, and provides detailed logging to both files and the database for traceability.
 
-4. **Data Loading**:
-   - `generic_import.py`: Loads transformed data into PostgreSQL tables (e.g., `dba.tmeetmax`), dynamically creating tables or adding columns based on the import strategy. It manages metadata, dataset IDs, and ensures data integrity.
+---
 
-5. **Logging and Monitoring**:
-   - `log_utils.py`: Records detailed logs to CSV, TXT, and PostgreSQL (`dba.tLogEntry`), capturing timestamps, process types, and run UUIDs for traceability.
-   - Logs are stored in `/home/$USER/client_etl_workflow/logs/` with permissions set to `660` for security.
+## Core Concepts: A Database-Driven Pipeline
+This ETL pipeline is not configured through static files (`.json`, `.ini`, etc.). Instead, its behavior is defined by records in the PostgreSQL database. Understanding this concept is key to managing and extending the workflow.
 
-6. **Automation**:
-   - `run_python_etl_script.sh`: A wrapper script that activates the Python virtual environment and runs ETL scripts, ensuring consistent execution.
-   - Cron jobs (configured in `/etc/cron.d/etl_jobs`) schedule weekly runs, logging output to `logs/etl_cron.log`.
+The primary configuration tables are located in the `dba` schema:
+- **`dba.tinboxconfig`**: Defines rules for processing emails from a Gmail inbox. You can specify subject lines, attachment name patterns, and where to save the files.
+- **`dba.timportconfig`**: Defines how to process files that land in the `file_watcher/` directory. It specifies the file pattern to look for, the target database table, and the import strategy.
+- **`dba.treportmanager`**: Configures email reports. Each record defines the recipients, subject, body (including SQL queries to generate data grids), and schedule.
+- **`dba.tscheduler`**: Manages the schedules for miscellaneous cron jobs that are not reports.
 
-7. **Secure File Exchange**:
-   - Supports SFTP for client file uploads/downloads, with SSH enabled by `install_dependencies.sh`.
-   - File permissions are set to `660` or `770` for `etl_group` access, ensuring secure handling.
+**To modify the pipeline's behavior (e.g., process a new type of email attachment or run a new script), you will typically add or update a row in one of these tables.**
 
-## Prerequisites
-- **Operating System**: Linux Mint Desktop.
-- **Hardware**: 16GB RAM, 500GB storage, stable internet connection.
-- **Access**: User with sudo privileges for installation scripts.
-- **Dependencies**: Installed via `install_dependencies.sh` (see Installation Instructions).
+---
 
-## Directory Structure
-The project is organized under `/home/$USER/client_etl_workflow`:
-- `archive/`: Stores processed files after import.
-- `file_watcher/`: Monitors incoming client files.
-  - `file_watcher_temp/`: Temporary storage for intermediate files.
-- `jobscripts/`: ETL scripts (e.g., `meetmax_url_check.py`, `meetmax_url_download.py`).
-- `logs/`: Stores CSV and TXT log files for all operations.
-- `systemscripts/`: Utility scripts (e.g., `log_utils.py`, `xls_to_csv.py`).
-- `venv/`: Python virtual environment with dependencies.
+## How It Works: Data Flow
+The pipeline operates as a sequence of automated steps, orchestrated by cron and configured by the database.
 
-## Installation Instructions
+**Step 1: Data Ingestion (Getting files into `file_watcher/`)**
+This happens in one of two ways, both running on independent schedules:
+- **A) Gmail Processing**:
+    1. The `run_gmail_inbox_processor.py` script is executed by cron.
+    2. It queries `dba.tinboxconfig` for all active rules.
+    3. It scans the configured Gmail inbox.
+    4. For emails matching a rule's subject and attachment patterns, it downloads the `.eml` file and the attachment(s) directly into the `file_watcher/` directory. Filenames are prefixed with the email's sent date (`yyyyMMdd`).
+    5. The email is moved to the 'Processed' label in Gmail. Any email that does not match a rule is moved to the 'ErrorFolder' label to keep the inbox clean.
+- **B) Web Scraping**:
+    1. The `meetmax_url_download.py` script is executed by cron.
+    2. It downloads XLS files from MeetMax and saves them in the `file_watcher/` directory.
 
-### Script Execution Order
-Run the following scripts in order to set up the ETL pipeline. Each script logs its progress for troubleshooting.
+**Step 2: Generic File Import**
+1. The `run_import_job.py` script is executed by cron, with a `config_id` as an argument.
+2. This script calls `generic_import.py`, which reads the corresponding configuration from `dba.timportconfig`.
+3. It finds the matching file(s) in the `file_watcher/` directory based on the `file_pattern` in the configuration.
+4. If the file is an XLS/XLSX, it first calls `xls_to_csv.py` to convert it.
+5. It then loads the CSV data into the `target_table` specified in the configuration, creating or altering table columns if the import strategy allows.
+6. After a successful import, the source file is moved to the `archive/` directory.
 
-1. **`configure_etl_user.sh`**  
-   Sets up the user, group, and directory structure, and configures a cron job.
-   - **Run Command**:
-     ```bash
-     chmod +x configure_etl_user.sh
-     ./configure_etl_user.sh
+**Step 3: Reporting**
+1. The `send_reports.py` script is executed by cron with a `reportID`.
+2. It reads the configuration from `dba.treportmanager`.
+3. It executes the SQL queries defined in the configuration to generate data for the email body.
+4. It sends the final report via email.
+
+---
+
+## Installation and Setup Guide
+Follow these steps to set up the ETL pipeline on a new Linux Mint machine.
+
+1.  **Configure User and Directories**:
+    - Run the user setup script. This will create the `etl_user`, `etl_group`, and the project directory structure.
+      ```bash
+      chmod +x onboarding/sh/configure_etl_user.sh
+      ./onboarding/sh/configure_etl_user.sh
+      ```
+
+2.  **Install Dependencies**:
+    - Run the dependency installer. This will install PostgreSQL, Python, and all required system and Python packages.
+      ```bash
+      chmod +x onboarding/sh/install_dependencies.sh
+      ./onboarding/sh/install_dependencies.sh
+      ```
+
+3.  **Set Environment Variables**:
+    - Edit `env.sh` to set the passwords and email credentials for your environment.
+      ```bash
+      nano env.sh
+      ```
+
+4.  **Set Up the Database**:
+    - Run the SQL setup script. This will create the database, schemas, and all necessary tables and functions.
+      ```bash
+      chmod +x onboarding/sh/sql_setupscripts.sh
+      ./onboarding/sh/sql_setupscripts.sh
+      ```
+
+5.  **Configure Google API Credentials**:
+    - Go to the Google Cloud Console and create a new project.
+    - Enable the **Gmail API**.
+    - Create an **OAuth 2.0 Client ID** for a **Desktop app**.
+    - Download the credentials JSON file and save it as `systemscripts/credentials.json`.
+
+6.  **Generate Initial Gmail API Token**:
+    - The first time you run a script that accesses the Gmail API, you will need to authorize it. The `test_oauth_gmail_headless.py` script is designed for this.
+    - Run it from the command line. It will print a URL.
+      ```bash
+      /bin/bash jobscripts/run_python_etl_script.sh test_oauth_gmail_headless.py
+      ```
+    - Copy the URL into a browser, sign in to your Google account, and grant permission.
+    - You will be redirected to a non-working `localhost` page. **Copy the entire URL from your browser's address bar** and paste it back into the terminal when prompted.
+    - This will generate a `systemscripts/token.json` file, which will be used for all future authentications. The script will handle refreshing the token automatically.
+
+---
+
+## Configuration Guide
+To change how the pipeline works, you will typically modify the database tables.
+
+- **To process a new email attachment**:
+  - Add a new row to `dba.tinboxconfig`.
+  - **`config_name`**: A unique name (e.g., 'NewClientReport').
+  - **`subject_pattern`**: A regex pattern to match the email subject.
+  - **`has_attachment`**: `TRUE`.
+  - **`attachment_name_pattern`**: A regex pattern to match the attachment's filename (e.g., `'.*\\.csv$'` for any CSV file).
+  - **`local_repository_path`**: The directory to save the files in (usually `/home/yostfundsadmin/client_etl_workflow/file_watcher/`).
+
+- **To import a new file type**:
+  - First, ensure the file is being placed in the `file_watcher/` directory (either by the Gmail processor or another process).
+  - Add a new row to `dba.timportconfig`.
+  - **`config_name`**: A unique name (e.g., 'ImportNewClientReport').
+  - **`file_pattern`**: A regex pattern to match the file saved by the inbox processor (e.g., `^\\d{8}_NewClientReport\\.csv$`).
+  - **`target_table`**: The destination table in the database (e.g., `public.tnewclientreport`).
+  - **`importstrategyid`**: `1` if you want the script to automatically add new columns to the table if they appear in the source file.
+
+- **To create a new scheduled job**:
+  - Add a new row to `dba.tscheduler` for general scripts or `dba.treportmanager` for reports.
+  - Define the cron `frequency` and the script to be run.
+  - After adding the schedule to the database, you must regenerate the system's cron file by running:
+    ```bash
+    sudo /bin/bash /home/yostfundsadmin/client_etl_workflow/jobscripts/run_python_etl_script.sh update_cron_jobs.py
+    ```
+
+---
+
+## File Descriptions
+A brief overview of the most important scripts.
+
+### `jobscripts/`
+- **`run_gmail_inbox_processor.py`**: The main entry point for the email processing workflow. It should be scheduled in cron to run periodically.
+- **`run_import_job.py`**: The entry point for the file import workflow. It takes a `config_id` from `dba.timportconfig` as an argument.
+- **`run_python_etl_script.sh`**: A critical wrapper script that sets up the virtual environment and environment variables before executing any Python script. **All cron jobs should use this wrapper.**
+- **`test_oauth_gmail_headless.py`**: A utility script used once during setup to generate the initial `token.json` for Gmail API access.
+
+### `systemscripts/`
+- **`gmail_inbox_processor.py`**: Contains the core logic for connecting to Gmail, reading emails, matching them against `dba.tinboxconfig`, and downloading files.
+- **`generic_import.py`**: Contains the core logic for reading files from the `file_watcher/` directory and importing them into the database based on rules in `dba.timportconfig`.
+- **`xls_to_csv.py`**: A utility script called by `generic_import.py` to handle XLS/XLSX to CSV conversion.
+
+
 ## File Descriptions
 
 ### Root Directory
