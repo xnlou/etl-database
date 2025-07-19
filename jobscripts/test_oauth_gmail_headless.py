@@ -88,7 +88,7 @@ def test_oauth_smtp_send():
             return False
 
         print("Status: Testing SMTP send authentication.")
-        auth_string = f'user={EMAIL}\1auth=Bearer {credentials.token}\1\1'.encode('ascii')
+        auth_string = f'user={EMAIL}\x01auth=Bearer {credentials.token}\x01\x01'.encode('ascii')
         server = smtplib.SMTP('smtp.gmail.com', 587)
         server.starttls()
         server.ehlo()
