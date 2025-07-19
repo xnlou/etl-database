@@ -287,3 +287,54 @@ There are two primary ways to manage the cron jobs for this project:
     sudo /bin/bash /home/yostfundsadmin/client_etl_workflow/jobscripts/run_python_etl_script.sh update_cron_jobs.py
     ```
     This approach is safer and ensures that the cron configuration stays in sync with the application's database.
+
+### Email API Configuration and Usage
+
+The pipeline supports both inbound email processing (monitoring a Gmail inbox for matching emails) and outbound reporting (sending automated emails with data summaries or attachments). Inbound uses the Gmail API for secure access, while outbound uses SMTP (e.g., via Gmail).
+
+#### Inbound Email Processing (Gmail API)
+- **Purpose**: Monitors a Gmail inbox for emails matching rules in `dba.tinboxconfig` (e.g., specific subjects, senders, or attachments). Downloads raw email content and attachments to `file_watcher/` for ETL processing, then moves emails to "Processed" or "ErrorFolder" labels.
+- **Scripts Involved**: `gmail_inbox_processor.py` (core logic), `run_gmail_inbox_processor.py` (wrapper for config_id execution).
+- **Setup Steps**:
+  1. Enable the Gmail API in the Google Cloud Console: Go to [Google APIs Console](https://console.developers.google.com/), create a project, enable "Gmail API", and download `credentials.json` (OAuth 2.0 Client IDs).
+  2. Place `credentials.json` in `systemscripts/` (template provided).
+  3. Install dependencies: Run `onboarding/sh/gmail_api.sh` to install `google-api-python-client`, `google-auth-oauthlib`, and `google-auth-httplib2`.
+  4. On first run, authenticate: Execute `gmail_inbox_processor.py`—it will open a browser for OAuth consent, generating `token.json` for future sessions.
+  5. Configure rules in `dba.tinboxconfig`: Insert rows with filters like `subject_contains` (e.g., "MeetMax Update"), `has_attachment` (true/false), and target directories.
+- **Security Notes**: Use OAuth for read-only access (scope: `https://mail.google.com/`). Avoid hardcoding credentials; refresh tokens handle expiration.
+- **Troubleshooting**: Check logs for OAuth errors. Test with `process_inbox.py` for manual runs.
+
+#### Outbound Email Reporting (SMTP)
+- **Purpose**: Sends reports based on `dba.treportmanager` (e.g., SQL query results as CSV attachments, job status summaries).
+- **Scripts Involved**: `send_reports.py` (executes queries and sends emails), `testemail.py` (for validation).
+- **Setup Steps**:
+  1. Configure SMTP in scripts: Use Gmail (host: `smtp.gmail.com`, port: 587) with app passwords (enable 2FA and generate via Google Account settings).
+  2. Populate `dba.treportmanager`: Define `reportID`, `query` (e.g., SELECT from tmeetmax), `recipients`, and `attachment_format` (CSV/XLS).
+  3. Schedule via cron: Reports are triggered by `update_cron_jobs.py` based on database schedules.
+- **Example**: A report might attach a CSV of new MeetMax events, with body text like "ETL job completed successfully."
+- **Security Notes**: Use TLS (starttls) and app-specific passwords. Avoid plain-text credentials in code.
+
+### Visual Overview
+
+To better illustrate the ETL workflow, here's a high-level flowchart using Mermaid syntax (viewable in GitHub or Markdown renderers like Typora). It shows the sequence from data extraction to reporting.
+
+```mermaid
+flowchart TD
+    A[Start: Cron Trigger] --> B[Extract: MeetMax URL Check/Download]
+    B --> C[Process Inbox: Gmail API for Emails/Attachments]
+    C --> D[Convert: XLS/XLSX to CSV]
+    D --> E[Transform/Load: Generic Import to PostgreSQL]
+    E --> F[Report: Send Emails via SMTP]
+    F --> G[Archive/Cleanup: Move Files, Log Entries]
+    G --> H[End: Secure File Exchange via SFTP]
+    
+    subgraph "Inbound Email"
+    C
+    end
+    
+    subgraph "Database Operations"
+    E
+    end
+    
+    style A fill:#f9f,stroke:#333,stroke-width:2px
+    style H fill:#bbf,stroke:#333,stroke-width:2px
