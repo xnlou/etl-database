@@ -108,13 +108,14 @@ def process_email(service, msg_id, config, processed_label_id, log_file, run_uui
     # Download raw email as .eml
     raw_msg = service.users().messages().get(userId='me', id=msg_id, format='raw').execute()
     raw_bytes = base64.urlsafe_b64decode(raw_msg['raw'])
+    timestamp = datetime.now().strftime("%Y%m%dT%H%M%S")
 
     # Define the base directory for saving files, without creating a subdirectory
     save_dir = Path(config['local_path'])
     ensure_directory_exists(save_dir)
 
-    # Save the .eml file directly in the save_dir, named by its unique message ID
-    eml_filename = f"{msg_id}.eml"
+    # Save the .eml file directly in the save_dir, named with msg_id and timestamp
+    eml_filename = f"{msg_id}_{timestamp}.eml"
     eml_path = save_dir / eml_filename
     with open(eml_path, 'wb') as f:
         f.write(raw_bytes)
@@ -135,8 +136,10 @@ def process_email(service, msg_id, config, processed_label_id, log_file, run_uui
                     
                     file_bytes = base64.urlsafe_b64decode(data)
                     
-                    # Use the original filename for the attachment
-                    att_path = save_dir / original_filename
+                    # Append timestamp to the original filename before the extension
+                    base, ext = os.path.splitext(original_filename)
+                    new_filename = f"{base}_{timestamp}{ext}"
+                    att_path = save_dir / new_filename
                     with open(att_path, 'wb') as f:
                         f.write(file_bytes)
                     os.chmod(att_path, 0o660)
