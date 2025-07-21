@@ -8,8 +8,8 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build  # For Gmail API reading
 
 # Paths
-CREDENTIALS_FILE = '/home/yostfundsadmin/client_etl_workflow/systemscripts/credentials.json'
-TOKEN_FILE = '/home/yostfundsadmin/client_etl_workflow/systemscripts/token.json'  # Securely store refresh_token here
+CREDENTIALS_FILE = str(Path.home() / 'client_etl_workflow' / 'systemscripts' / 'credentials.json')
+TOKEN_FILE = str(Path.home() / 'client_etl_workflow' / 'systemscripts' / 'token.json')  # Securely store refresh_token here
 SCOPES = ['https://mail.google.com/']  # Full Gmail access (read/send)
 EMAIL = 'yostfundsdata@gmail.com'  # Your Gmail address
 LOCALHOST_PORT = 8080  # Arbitrary port for loopback

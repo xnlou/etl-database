@@ -3,7 +3,7 @@ import os
 # Database connection parameters
 DB_PARAMS = {
     "dbname": "feeds",
-    "user": "yostfundsadmin",
+    "user": os.getenv("DB_USER", "etl_user"),
     "password": os.getenv("DB_PASSWORD", "etlserver2025!"),
     "host": "localhost",
     "port": "5432"

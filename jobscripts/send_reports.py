@@ -1,5 +1,5 @@
 import sys
-sys.path.append('/home/yostfundsadmin/client_etl_workflow')  # Add repository root to sys.path
+sys.path.append(str(Path.home() / 'client_etl_workflow'))  # Add repository root to sys.path
 import pandas as pd
 import smtplib
 from email.mime.multipart import MIMEMultipart
@@ -20,7 +20,7 @@ import grp
 
 # Generate log file name with timestamp suffix (yyyyMMddThhmmss)
 log_timestamp = datetime.now().strftime("%Y%m%dT%H%M%S")
-log_file = f"/home/yostfundsadmin/client_etl_workflow/logs/send_reports.log_{log_timestamp}"
+log_file = f"{str(Path.home() / 'client_etl_workflow' / 'logs' / 'send_reports.log')}_{log_timestamp}"
 
 # Set permissions for log file
 try:

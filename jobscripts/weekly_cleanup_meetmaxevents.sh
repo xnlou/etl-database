@@ -4,8 +4,8 @@
 # Logs output to /home/yostfundsadmin/client_etl_workflow/logs/weekly_cleanup_YYYYMMDDTHHMMSS.log
 
 # Define paths
-ARCHIVE_DIR="/home/yostfundsadmin/client_etl_workflow/archive/meetmaxevents"
-LOG_DIR="/home/yostfundsadmin/client_etl_workflow/logs"
+ARCHIVE_DIR="$HOME/client_etl_workflow/archive/meetmaxevents"
+LOG_DIR="$HOME/client_etl_workflow/logs"
 LOG_FILE="$LOG_DIR/weekly_cleanup_meetmaxevents_$(date '+%Y%m%dT%H%M%S').log"
 
 # Ensure the log directory exists

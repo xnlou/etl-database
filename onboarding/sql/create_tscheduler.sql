@@ -26,5 +26,5 @@ COMMENT ON COLUMN dba.tscheduler.uk_taskname IS 'Ensures task names are unique.'
 
 -- Grant permissions
 GRANT SELECT, INSERT, UPDATE ON dba.tscheduler TO etl_user;
-GRANT ALL ON dba.tscheduler TO yostfundsadmin;
+GRANT ALL ON dba.tscheduler TO current_user;
 GRANT USAGE, SELECT ON SEQUENCE dba.tscheduler_schedulerid_seq TO etl_user;

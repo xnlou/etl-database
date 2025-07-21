@@ -32,5 +32,5 @@ COMMENT ON COLUMN dba.tinboxconfig.last_modified_at IS 'Timestamp of when the co
 -- Insert a sample configuration for testing
 INSERT INTO dba.tinboxconfig (config_name, gmail_account, subject_pattern, has_attachment, attachment_name_pattern, local_repository_path, is_active)
 VALUES ('DeaLogicEmail', 'yostfundsdata@gmail.com', '.*Yost - MeetMax Daily Exception Report.*', TRUE, '.*\\.csv
-, '/home/yostfundsadmin/client_etl_workflow/file_watcher/', TRUE)
+, '/home/' || current_user || '/client_etl_workflow/file_watcher/', TRUE)
 ON CONFLICT (config_name) DO NOTHING;

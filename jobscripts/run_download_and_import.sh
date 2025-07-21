@@ -3,7 +3,7 @@
 set -e  # Exit immediately if a command exits with a non-zero status
 
 # Define paths
-PROJECT_DIR="/home/yostfundsadmin/client_etl_workflow"
+PROJECT_DIR="$HOME/client_etl_workflow"
 RUN_SCRIPT="$PROJECT_DIR/jobscripts/run_python_etl_script.sh"
 LOG_FILE="$PROJECT_DIR/logs/etl_cron.log"
 

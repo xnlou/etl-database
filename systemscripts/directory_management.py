@@ -4,7 +4,7 @@ from pathlib import Path
 # Directory Management Module
 
 # Root directory for all ETL workflows
-ROOT_DIR = Path('/home/yostfundsadmin/client_etl_workflow')
+ROOT_DIR = Path.home() / 'client_etl_workflow'
 
 # Directory for file watcher
 FILE_WATCHER_DIR = ROOT_DIR / 'file_watcher'

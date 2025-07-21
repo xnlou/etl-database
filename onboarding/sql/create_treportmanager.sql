@@ -44,7 +44,7 @@ DO $OUTER$
 BEGIN
     RAISE NOTICE 'Granting permissions on dba.treportmanager';
     GRANT SELECT, INSERT, UPDATE ON dba.treportmanager TO etl_user;
-    GRANT ALL ON dba.treportmanager TO yostfundsadmin;
+    GRANT ALL ON dba.treportmanager TO current_user;
     GRANT USAGE, SELECT ON SEQUENCE dba.treportmanager_reportid_seq TO etl_user;
     RAISE NOTICE 'Permissions granted on dba.treportmanager';
 END $OUTER$;

@@ -1,5 +1,5 @@
 import sys
-sys.path.append('/home/yostfundsadmin/client_etl_workflow')  # Add repository root to sys.path
+sys.path.append(str(Path.home() / 'client_etl_workflow'))  # Add repository root to sys.path
 import psycopg2
 import os
 from systemscripts.db_config import DB_PARAMS  # Import centralized DB config
@@ -22,14 +22,14 @@ cron_file = "/etc/cron.d/etl_jobs"
 with open(cron_file, 'w') as f:
     # Add environment sourcing and cron jobs for reports
     for report_id, frequency in report_schedules:
-        cron_line = f"{frequency} etl_user PATH=/usr/local/bin:/usr/bin:/bin /bin/bash /home/yostfundsadmin/client_etl_workflow/jobscripts/run_python_etl_script.sh send_reports.py {report_id} >> /home/yostfundsadmin/client_etl_workflow/logs/etl_cron.log 2>&1\n"
+        cron_line = f"{frequency} etl_user PATH=/usr/local/bin:/usr/bin:/bin /bin/bash {str(Path.home() / 'client_etl_workflow' / 'jobscripts' / 'run_python_etl_script.sh')} send_reports.py {report_id} >> {str(Path.home() / 'client_etl_workflow' / 'logs' / 'etl_cron.log')} 2>&1\n"
         f.write(cron_line)
 
     # Add environment sourcing and cron jobs for other tasks
     for scheduler_id, taskname, frequency, scriptpath, scriptargs in task_schedules:
         scriptargs = scriptargs if scriptargs else ""
         script_name = os.path.basename(scriptpath)
-        cron_line = f"{frequency} etl_user PATH=/usr/local/bin:/usr/bin:/bin /bin/bash /home/yostfundsadmin/client_etl_workflow/jobscripts/run_python_etl_script.sh {script_name} {scriptargs} >> /home/yostfundsadmin/client_etl_workflow/logs/etl_cron.log 2>&1\n"
+        cron_line = f"{frequency} etl_user PATH=/usr/local/bin:/usr/bin:/bin /bin/bash {str(Path.home() / 'client_etl_workflow' / 'jobscripts' / 'run_python_etl_script.sh')} {script_name} {scriptargs} >> {str(Path.home() / 'client_etl_workflow' / 'logs' / 'etl_cron.log')} 2>&1\n"
         f.write(cron_line)
 
 # Set permissions and ownership on the cron file

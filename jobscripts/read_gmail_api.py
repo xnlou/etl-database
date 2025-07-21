@@ -11,11 +11,11 @@ from email.mime.base import MIMEBase
 from email import encoders
 
 # Paths (reuse from test script)
-CREDENTIALS_FILE = '/home/yostfundsadmin/client_etl_workflow/systemscripts/credentials.json'
-TOKEN_FILE = '/home/yostfundsadmin/client_etl_workflow/systemscripts/token.json'
+CREDENTIALS_FILE = str(Path.home() / 'client_etl_workflow' / 'systemscripts' / 'credentials.json')
+TOKEN_FILE = str(Path.home() / 'client_etl_workflow' / 'systemscripts' / 'token.json')
 SCOPES = ['https://mail.google.com/']  # Full access
 EMAIL = 'yostfundsdata@gmail.com'
-OUTPUT_DIR = '/home/yostfundsadmin/client_etl_workflow/file_watcher/'  # For ETL inputs
+OUTPUT_DIR = str(Path.home() / 'client_etl_workflow' / 'file_watcher')  # For ETL inputs
 
 def load_credentials():
     """Load client secrets from JSON."""

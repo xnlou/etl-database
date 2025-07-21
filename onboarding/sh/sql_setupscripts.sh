@@ -5,14 +5,14 @@ set -e  # Exit immediately if a command exits with a non-zero status
 
 # Define paths
 CURRENT_USER=$(whoami)
-PROJECT_DIR="/home/yostfundsadmin/client_etl_workflow"
+PROJECT_DIR="$HOME/client_etl_workflow"
 ONBOARDING_DIR="$PROJECT_DIR/onboarding/sql"
 LOG_DIR="$PROJECT_DIR/logs"
 LOG_FILE="$LOG_DIR/sql_setupscripts_$(date +%Y%m%dT%H%M%S).log"
 
 # Database connection details
 DB_NAME="feeds"
-DB_USER="yostfundsadmin"
+DB_USER=$(whoami)
 ETL_USER="etl_user"
 DB_HOST="localhost"
 DB_PORT="5432"
@@ -44,7 +44,7 @@ echo "=== SQL Setup Scripts Execution Started at $(date) by $CURRENT_USER ==="
 
 # --- Privileged Commands Section (Run as postgres user) ---
 
-# Grant permissions for pg_default tablespace to yostfundsadmin
+# Grant permissions for pg_default tablespace to the current user
 echo "[INFO] $(date): Granting permissions for pg_default tablespace to $DB_USER..."
 if sudo -u postgres psql -c "GRANT ALL ON TABLESPACE pg_default TO $DB_USER;"; then
     echo "[SUCCESS] $(date): Successfully granted pg_default tablespace permissions to $DB_USER."
@@ -74,7 +74,7 @@ else
     echo "[INFO] $(date): Role $ETL_USER already exists."
 fi
 
-# Grant superuser privileges to yostfundsadmin (needed for event triggers)
+# Grant superuser privileges to the current user (needed for event triggers)
 echo "[INFO] $(date): Granting superuser privileges to $DB_USER..."
 if sudo -u postgres psql -c "ALTER ROLE $DB_USER WITH SUPERUSER;"; then
     echo "[SUCCESS] $(date): Successfully granted superuser privileges to $DB_USER."

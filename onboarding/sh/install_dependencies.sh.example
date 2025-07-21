@@ -4,7 +4,7 @@ set -e  # Exit immediately if a command exits with a non-zero status
 
 # Detect the user running the script
 CURRENT_USER=$(whoami)
-PROJECT_DIR="/home/yostfundsadmin/client_etl_workflow"
+PROJECT_DIR="$HOME/client_etl_workflow"
 LOG_FILE="$PROJECT_DIR/logs/install_dependencies.log"
 
 # Function to log errors with timestamp and exit code

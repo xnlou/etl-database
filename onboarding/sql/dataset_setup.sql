@@ -42,7 +42,7 @@ DO $OUTER$
 BEGIN
     RAISE NOTICE 'Line 27: Granting permissions on tdatasettype';
     GRANT SELECT, INSERT ON dba.tdatasettype TO etl_user;
-    GRANT ALL ON dba.tdatasettype TO yostfundsadmin;
+    GRANT ALL ON dba.tdatasettype TO current_user;
     GRANT USAGE, SELECT ON SEQUENCE dba.tdatasettype_datasettypeid_seq TO etl_user;
     RAISE NOTICE 'Line 31: Permissions granted on tdatasettype';
 END $OUTER$;
@@ -76,7 +76,7 @@ DO $OUTER$
 BEGIN
     RAISE NOTICE 'Line 54: Granting permissions on tdatasource';
     GRANT SELECT, INSERT ON dba.tdatasource TO etl_user;
-    GRANT ALL ON dba.tdatasource TO yostfundsadmin;
+    GRANT ALL ON dba.tdatasource TO current_user;
     GRANT USAGE, SELECT ON SEQUENCE dba.tdatasource_datasourceid_seq TO etl_user;
     RAISE NOTICE 'Line 58: Permissions granted on tdatasource';
 END $OUTER$;
@@ -110,7 +110,7 @@ DO $OUTER$
 BEGIN
     RAISE NOTICE 'Line 81: Granting permissions on tdatastatus';
     GRANT SELECT, INSERT ON dba.tdatastatus TO etl_user;
-    GRANT ALL ON dba.tdatastatus TO yostfundsadmin;
+    GRANT ALL ON dba.tdatastatus TO current_user;
     GRANT USAGE, SELECT ON SEQUENCE dba.tdatastatus_datastatusid_seq TO etl_user;
     RAISE NOTICE 'Line 85: Permissions granted on tdatastatus';
 END $OUTER$;

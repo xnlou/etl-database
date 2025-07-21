@@ -3,7 +3,7 @@ import os
 import psycopg2
 
 # Add root directory to sys.path
-sys.path.append('/home/yostfundsadmin/client_etl_workflow')
+sys.path.append(str(Path.home() / 'client_etl_workflow'))
 import pandas as pd
 import requests
 import uuid

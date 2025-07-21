@@ -4,7 +4,7 @@ set -e  # Exit immediately if a command exits with a non-zero status
 
 # Detect the user running the script
 CURRENT_USER=$(whoami)
-PROJECT_DIR="/home/yostfundsadmin/client_etl_workflow"
+PROJECT_DIR="$HOME/client_etl_workflow"
 LOG_FILE="$PROJECT_DIR/logs/configure_etl_user.log"
 
 # Function to log errors with timestamp
@@ -63,13 +63,13 @@ log_system_check "Checking disk space on /home" "$(df -h /home | tail -1)"
 
 # Configure sudoers for etl_user (limit to necessary commands)
 echo "Allowing etl_user to run specific commands without password..."
-echo "etl_user ALL=(ALL) NOPASSWD: /home/yostfundsadmin/client_etl_workflow/venv/bin/python, /bin/bash, /bin/chown, /bin/chmod" | sudo tee /etc/sudoers.d/etl_user >/dev/null
+echo "etl_user ALL=(ALL) NOPASSWD: $PROJECT_DIR/venv/bin/python, /bin/bash, /bin/chown, /bin/chmod" | sudo tee /etc/sudoers.d/etl_user >/dev/null
 sudo chmod 440 /etc/sudoers.d/etl_user && sudo visudo -c && echo "Sudoers configuration set." || log_error "Failed to configure sudoers"
 
 # Set up cron for etl_user
 echo "Configuring cron for etl_user..."
 CRON_FILE="/etc/cron.d/etl_jobs"
-echo "0 8 * * * etl_user PATH=/usr/local/bin:/usr/bin:/bin /bin/bash /home/yostfundsadmin/client_etl_workflow/jobscripts/run_python_etl_script.sh send_reports.py 2 >> /home/yostfundsadmin/client_etl_workflow/logs/etl_cron.log 2>&1" | sudo tee "$CRON_FILE" >/dev/null
+echo "0 8 * * * etl_user PATH=/usr/local/bin:/usr/bin:/bin /bin/bash $PROJECT_DIR/jobscripts/run_python_etl_script.sh send_reports.py 2 >> $PROJECT_DIR/logs/etl_cron.log 2>&1" | sudo tee "$CRON_FILE" >/dev/null
 sudo chown root:cron_etl "$CRON_FILE"
 sudo chmod 644 "$CRON_FILE" && echo "Cron job configured for etl_user." || log_error "Failed to configure cron"
 

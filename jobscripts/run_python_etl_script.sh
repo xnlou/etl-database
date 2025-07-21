@@ -3,7 +3,7 @@
 set -e  # Exit immediately if a command exits with a non-zero status
 
 # Project directory and virtual environment (hardcoded to ensure consistency)
-PROJECT_DIR="/home/yostfundsadmin/client_etl_workflow"
+PROJECT_DIR="$HOME/client_etl_workflow"
 VENV_DIR="$PROJECT_DIR/venv"
 PYTHON="$VENV_DIR/bin/python"
 ACTIVATE_VENV="source $VENV_DIR/bin/activate"
