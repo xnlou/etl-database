@@ -1,0 +1,227 @@
+import sys
+import os
+import psycopg2
+
+# Add root directory to sys.path
+sys.path.append('/home/yostfundsadmin/client_etl_workflow')
+import pandas as pd
+import requests
+import uuid
+import time
+from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime
+from systemscripts.user_utils import get_username
+from systemscripts.log_utils import log_message
+from systemscripts.directory_management import FILE_WATCHER_DIR, LOG_DIR, ensure_directory_exists
+from systemscripts.db_config import DB_PARAMS
+import grp
+
+# Configuration
+USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+# HTTP User-Agent header sent with requests to mimic a browser and avoid being blocked.
+
+MAX_RETRIES = 2
+# Number of retry attempts for a failed download (e.g., due to network issues or HTTP 429).
+# Lower values reduce server load but may miss downloads if failures are transient.
+
+INITIAL_DELAY = 15.0
+# Initial delay (in seconds) before retrying a failed request. Uses exponential backoff
+# (e.g., 10s, 20s for retries). Higher values reduce server pressure during retries.
+
+TASK_SUBMISSION_DELAY = 5.0
+# Delay (in seconds) between submitting download tasks to the thread pool.
+# Higher values slow down the rate of new requests, reducing server load.
+
+MAX_WORKERS = 1
+# Number of concurrent download threads in ThreadPoolExecutor.
+# Lower values (e.g., 1) reduce simultaneous requests, making the script more conservative.
+
+
+
+# Ensure directories exist
+ensure_directory_exists(FILE_WATCHER_DIR)
+ensure_directory_exists(LOG_DIR)
+
+def fetch_url_data(log_file, run_uuid, user, script_start_time):
+    """Fetch URL data from public.tmeetmaxurlcheck and dba.tdataset for the most recent datasetdate."""
+    try:
+        with psycopg2.connect(**DB_PARAMS) as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    WITH MaxURLCheckDate AS (
+                        SELECT 
+                            MAX(t.datasetdate) AS maxdatasetdate
+                        FROM dba.tdataset t
+                        WHERE t.isactive = TRUE
+                        AND t.datasettypeid = 2
+                    ),
+                    LatestURLCheckDataset AS (
+                        SELECT DISTINCT
+                            mm.eventid,
+                            mm.isdownloadable,
+                            mm.downloadlink,
+                            ds.isactive,
+                            mu.maxdatasetdate
+                        FROM public.tmeetmaxurlcheck mm
+                        JOIN dba.tdataset ds ON ds.datasetid = mm.datasetid
+                        CROSS JOIN MaxURLCheckDate mu
+                        WHERE ds.isactive = TRUE
+                        AND mm.isdownloadable = '1'
+                        AND ds.datasetdate = mu.maxdatasetdate
+                    )
+                    SELECT 
+                        eventid,
+                        isdownloadable,
+                        downloadlink,
+                        isactive,
+                        maxdatasetdate
+                    FROM LatestURLCheckDataset
+                    ORDER BY eventid;
+                """)
+                rows = cur.fetchall()
+                columns = ['EventID', 'IsDownloadable', 'DownloadLink', 'IsActive', 'MaxDatasetDate']
+                df = pd.DataFrame(rows, columns=columns)
+                
+                df['IsDownloadable'] = df['IsDownloadable'].astype(int)
+                df['IsActive'] = df['IsActive'].astype(int)
+                
+                log_message(log_file, "DataFetch", f"Fetched {len(df)} rows from database",
+                            run_uuid=run_uuid, stepcounter="DataFetch_0", user=user, script_start_time=script_start_time)
+                if len(df) == 0:
+                    log_message(log_file, "Warning", "No downloadable URLs found for the most recent datasetdate",
+                                run_uuid=run_uuid, stepcounter="DataFetch_1", user=user, script_start_time=script_start_time)
+                else:
+                    log_message(log_file, "Debug", f"MaxDatasetDate: {df['MaxDatasetDate'].iloc[0]}",
+                                run_uuid=run_uuid, stepcounter="DataFetch_1", user=user, script_start_time=script_start_time)
+                log_message(log_file, "Debug", f"DataFrame columns: {df.columns.tolist()}",
+                            run_uuid=run_uuid, stepcounter="DataFetch_2", user=user, script_start_time=script_start_time)
+                log_message(log_file, "Debug", f"IsDownloadable values: {df['IsDownloadable'].value_counts().to_dict()}",
+                            run_uuid=run_uuid, stepcounter="DataFetch_3", user=user, script_start_time=script_start_time)
+                log_message(log_file, "Debug", f"DataFrame dtypes: {df.dtypes.to_dict()}",
+                            run_uuid=run_uuid, stepcounter="DataFetch_4", user=user, script_start_time=script_start_time)
+                return df
+    except psycopg2.Error as e:
+        log_message(log_file, "Error", f"Database error: {str(e)}",
+                    run_uuid=run_uuid, stepcounter="DataFetch_5", user=user, script_start_time=script_start_time)
+        return None
+    except Exception as e:
+        log_message(log_file, "Error", f"Unexpected error: {str(e)}",
+                    run_uuid=run_uuid, stepcounter="DataFetch_6", user=user, script_start_time=script_start_time)
+        return None
+
+def download_file(event_id, download_url, log_file, run_uuid, user, script_start_time, timestamp):
+    """Download an XLS file."""
+    result = {"EventID": event_id, "DownloadURL": download_url, "Status": "Failed"}
+    log_message(log_file, "Download", f"Starting download for EventID {event_id} from {download_url}",
+                run_uuid=run_uuid, stepcounter=f"download_{event_id}", user=user, script_start_time=script_start_time)
+    
+    session = requests.Session()
+    session.headers.update({
+        "User-Agent": USER_AGENT,
+        "Accept": "application/vnd.ms-excel,application/octet-stream",
+        "Accept-Encoding": "gzip, deflate",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Connection": "keep-alive"
+    })
+    
+    output_file = FILE_WATCHER_DIR / f"{timestamp}_MeetMax_{event_id}.xls"
+    
+    try:
+        for attempt in range(MAX_RETRIES):
+            try:
+                response = session.get(download_url, timeout=10)
+                response.raise_for_status()
+                with open(output_file, "wb") as f:
+                    f.write(response.content)
+                os.chmod(output_file, 0o660)
+                try:
+                    group_id = grp.getgrnam('etl_group').gr_gid
+                    os.chown(output_file, os.getuid(), group_id)
+                except KeyError:
+                    log_message(log_file, "Warning", f"Group 'etl_group' not found; skipping chown for {output_file}",
+                                run_uuid=run_uuid, stepcounter=f"download_{event_id}_chown", user=user, script_start_time=script_start_time)
+                log_message(log_file, "Download", f"Downloaded EventID {event_id} to {output_file}",
+                            run_uuid=run_uuid, stepcounter=f"download_{event_id}", user=user, script_start_time=script_start_time)
+                result["Status"] = "Success"
+                return result
+            except requests.RequestException as e:
+                if attempt == MAX_RETRIES - 1:
+                    log_message(log_file, "Error", f"Failed EventID {event_id} after {MAX_RETRIES} attempts: {str(e)}",
+                                run_uuid=run_uuid, stepcounter=f"download_{event_id}", user=user, script_start_time=script_start_time)
+                    return result
+                time.sleep(INITIAL_DELAY * (2 ** attempt))
+    except Exception as e:
+        log_message(log_file, "Error", f"Unexpected error for EventID {event_id}: {str(e)}",
+                    run_uuid=run_uuid, stepcounter=f"download_{event_id}", user=user, script_start_time=script_start_time)
+        return result
+
+def meetmax_url_download():
+    """Download XLS files from MeetMax URLs."""
+    script_start_time = time.time()
+    run_uuid = str(uuid.uuid4())
+    user = get_username()
+    timestamp = datetime.now().strftime("%Y%m%dT%H%M%S")
+    log_file = LOG_DIR / f"meetmax_url_download_{timestamp}"
+    results_file = FILE_WATCHER_DIR / f"{timestamp}_meetmax_url_download_results.csv"
+    
+    log_message(log_file, "Initialization", f"Script started at {timestamp}",
+                run_uuid=run_uuid, stepcounter="Initialization_0", user=user, script_start_time=script_start_time)
+    log_message(log_file, "Initialization", f"Results CSV path: {results_file}",
+                run_uuid=run_uuid, stepcounter="Initialization_1", user=user, script_start_time=script_start_time)
+    
+    # Fetch data
+    df = fetch_url_data(log_file, run_uuid, user, script_start_time)
+    if df is None or df.empty:
+        log_message(log_file, "Error", "No data fetched. Exiting.",
+                    run_uuid=run_uuid, stepcounter="DataFetch_5", user=user, script_start_time=script_start_time)
+        return
+    
+    # Filter downloadable events
+    downloadable = df[(df["IsDownloadable"] == 1) & (df["DownloadLink"].notna())]
+    log_message(log_file, "Filter", f"Found {len(downloadable)} downloadable events",
+                run_uuid=run_uuid, stepcounter="Filter_0", user=user, script_start_time=script_start_time)
+    log_message(log_file, "Debug", f"Rows with IsDownloadable=1: {len(df[df['IsDownloadable'] == 1])}",
+                run_uuid=run_uuid, stepcounter="Filter_1", user=user, script_start_time=script_start_time)
+    log_message(log_file, "Debug", f"Rows with IsDownloadable=1 and DownloadLink not null: {len(downloadable)}",
+                run_uuid=run_uuid, stepcounter="Filter_2", user=user, script_start_time=script_start_time)
+    log_message(log_file, "Debug", f"Downloadable rows: {len(downloadable)}, EventIDs: {downloadable['EventID'].tolist()}",
+                run_uuid=run_uuid, stepcounter="Filter_3", user=user, script_start_time=script_start_time)
+    
+    results = []
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+        futures = []
+        for _, row in downloadable.iterrows():
+            event_id = row["EventID"]
+            download_url = row["DownloadLink"]
+            futures.append(executor.submit(download_file, event_id, download_url, log_file, run_uuid, user, script_start_time, timestamp))
+            time.sleep(TASK_SUBMISSION_DELAY)
+        
+        for future in futures:
+            result = future.result()
+            results.append(result)
+            log_message(log_file, "Processing", f"Completed EventID {result['EventID']}, Status: {result['Status']}",
+                        run_uuid=run_uuid, stepcounter=f"result_{result['EventID']}", user=user, script_start_time=script_start_time)
+    
+    # Save results
+    if results:
+        results_df = pd.DataFrame(results)
+        results_df.to_csv(results_file, index=False)
+        os.chmod(results_file, 0o660)
+        try:
+            group_id = grp.getgrnam('etl_group').gr_gid
+            os.chown(results_file, os.getuid(), group_id)
+        except KeyError:
+            log_message(log_file, "Warning", f"Group 'etl_group' not found; skipping chown for {results_file}",
+                        run_uuid=run_uuid, stepcounter="FinalSave_chown", user=user, script_start_time=script_start_time)
+        log_message(log_file, "FinalSave", f"Saved {len(results)} rows to {results_file}",
+                    run_uuid=run_uuid, stepcounter="FinalSave_0", user=user, script_start_time=script_start_time)
+    else:
+        log_message(log_file, "FinalSave", "No results to save",
+                    run_uuid=run_uuid, stepcounter="FinalSave_1", user=user, script_start_time=script_start_time)
+    
+    log_message(log_file, "Finalization", f"Script completed, processed {len(results)} events",
+                run_uuid=run_uuid, stepcounter="Finalization_0", user=user, script_start_time=script_start_time)
+
+if __name__ == "__main__":
+    meetmax_url_download()

@@ -1,0 +1,23 @@
+venv/
+logs/*.csv
+logs/*.txt
+logs/*.log
+logs/*
+file_watcher/*.csv
+file_watcher/*.xls
+file_watcher/Temp/*
+file_watcher/test/*.xls
+file_watcher/test/*.csv
+file_watcher/file_watcher_temp/*.csv
+file_watcher/file_watcher_temp/*.xls
+file_watcher/*.eml
+backups/*.gz
+systemscripts/*.pyc
+systemscripts/__pycache__/
+archive/
+
+# Sensitive files
+env.sh
+systemscripts/token.json
+systemscripts/credentials.json
+onboarding/sh/install_dependencies.sh
