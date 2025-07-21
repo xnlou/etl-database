@@ -15,3 +15,9 @@ backups/*.gz
 systemscripts/*.pyc
 systemscripts/__pycache__/
 archive/
+
+# Sensitive files
+env.sh
+systemscripts/token.json
+systemscripts/credentials.json
+onboarding/sh/install_dependencies.sh
