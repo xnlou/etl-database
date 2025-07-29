@@ -317,6 +317,7 @@ The pipeline supports both inbound email processing (monitoring a Gmail inbox fo
 ### Visual Overview
 
 To better illustrate the ETL workflow, here's a high-level flowchart using Mermaid syntax (viewable in GitHub or Markdown renderers like Typora). It shows the sequence from data extraction to reporting.
+test
 
 ```mermaid
 flowchart TD
